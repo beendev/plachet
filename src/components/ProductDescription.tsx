@@ -56,7 +56,7 @@ export default function ProductDescription() {
               <li>Finitions : ruban adhésif double face ou 4 ventouses.</li>
               <li>Impression recto/verso, couleurs vives et nettes.</li>
               <li>Usage : vitres et surfaces lisses (intérieur/extérieur).</li>
-              <li>Conditionnement : vendus par lots de 10.</li>
+           
             </ul>
           </div>
         </div>
