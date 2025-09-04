@@ -24,6 +24,9 @@ const FINISH_OPTIONS: { key: Finish; label: string; desc: string }[] = [
   { key: 'ventouses', label: '4 ventouses',   desc: 'Fixation amovible' },
 ];
 
+// Réponse attendue de l'API
+type ApiResponse = { ok: boolean; error?: string };
+
 export default function ProductSelector() {
   // produit
   const [size, setSize] = useState<SizeKey>('100x70');
@@ -73,14 +76,17 @@ export default function ProductSelector() {
           size, finish, qty,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data?.error || 'Erreur');
+
+      const data: ApiResponse = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error ?? `Erreur (HTTP ${res.status})`);
+      }
 
       setOkMsg("Commande envoyée. Vous allez recevoir un e-mail de confirmation avec le récapitulatif. La facture suivra pour valider la commande.");
       // reset minimal (on garde le produit choisi)
       setCompany(''); setName(''); setEmail(''); setPhone(''); setAddress(''); setNotes('');
-    } catch (err: any) {
-      setErrMsg(err.message || 'Une erreur est survenue.');
+    } catch (err: unknown) {
+      setErrMsg(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setSending(false);
     }
@@ -142,9 +148,7 @@ export default function ProductSelector() {
         <div className="mt-6">
           <label className="block text-sm font-medium mb-2">Finition</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {[
-              ...FINISH_OPTIONS,
-            ].map((f) => (
+            {FINISH_OPTIONS.map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFinish(f.key)}
