@@ -1,7 +1,9 @@
 // app/api/order/route.ts
 import { NextResponse } from 'next/server';
-import { orderSchema } from '@/lib/validators';
+import { orderSchema } from '@/lib/validator';
 import { sendOrderEmails } from '@/lib/mailer';
+import { ZodError } from 'zod';
+export const runtime = 'nodejs';
 
 const PRICE_PER_PIECE = 15;
 const SHIP_BE = 4.99;
@@ -26,11 +28,18 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    if (err?.name === 'ZodError') {
-      return NextResponse.json({ ok: false, error: 'Validation échouée', details: err.issues }, { status: 400 });
+  } catch (err: unknown) {
+    if (err instanceof ZodError) {
+      return NextResponse.json(
+        { ok: false, error: 'Validation échouée', details: err.issues },
+        { status: 400 }
+      );
     }
-    console.error(err);
-    return NextResponse.json({ ok: false, error: 'Erreur serveur' }, { status: 500 });
+
+    console.error(err instanceof Error ? err.message : err);
+    return NextResponse.json(
+      { ok: false, error: 'Erreur serveur' },
+      { status: 500 }
+    );
   }
 }
