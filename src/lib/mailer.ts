@@ -1,70 +1,66 @@
+// lib/mailer.ts
+// Si votre tsconfig n'a PAS "esModuleInterop": true,
+// remplacez la ligne suivante par:  import * as nodemailer from 'nodemailer';
 import nodemailer from 'nodemailer';
-import type { OrderInput } from './validator';
+import type { OrderInput } from './validator'; // <-- si votre fichier est "validator.ts", remplacez par './validator'
 
-const to = process.env.ORDER_TO_EMAIL || 'info@plachet.be';
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://plachet.be';
+const TO = process.env.ORDER_TO_EMAIL || 'info@plachet.be';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://plachet.be';
 
 function transporter() {
-  const host = process.env.SMTP_HOST;
+  const host = process.env.SMTP_HOST!;
   const port = Number(process.env.SMTP_PORT || 465);
   const secure = String(process.env.SMTP_SECURE || 'true') === 'true';
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!host || !user || !pass) throw new Error('SMTP non configuré (.env manquant)');
+  const user = process.env.SMTP_USER!;
+  const pass = process.env.SMTP_PASS!;
+  if (!host || !user || !pass) {
+    throw new Error('SMTP non configuré (.env manquant)');
+  }
   return nodemailer.createTransport({ host, port, secure, auth: { user, pass } });
 }
+
+type Totals = {
+  pricePerPiece: number; // ex. 15
+  shipping: number;      // ex. 4.99
+  merchandise: number;   // total articles, gratuités déduites
+  total: number;         // merchandise + shipping
+};
 
 const money = (n: number) => `${n.toFixed(2)}€`;
 
 export async function sendOrderEmails(
   order: OrderInput,
-  totals: { pricePerPiece: number; shipping: number; freeUnits: number; merchandise: number; total: number }
+  t: Totals,
+  orderRef: string
 ) {
-  const t = transporter();
+  const tx = transporter();
 
-  // ADMIN (HTML + texte)
-  await t.sendMail({
+  // ADMIN
+  await tx.sendMail({
     from: `PLACHET <${process.env.SMTP_USER}>`,
-    to,
-    subject: `Nouvelle commande – ${order.qty} unité(s) – ${money(totals.total)}`,
-    text: renderAdminText(order, totals),
-    html: renderAdminHtml(order, totals),
+    to: TO,
+    subject: `#${orderRef} – Nouvelle commande – ${order.qty} unité(s) – ${money(t.total)}`,
+    text: renderAdminText(order, t, orderRef),
+    html: renderAdminHtml(order, t, orderRef),
     replyTo: `${order.name} <${order.email}>`,
   });
 
-  // CLIENT (HTML + texte)
-  await t.sendMail({
+  // CLIENT
+  await tx.sendMail({
     from: `PLACHET <${process.env.SMTP_USER}>`,
     to: order.email,
-    subject: 'Votre commande PLACHET – confirmation',
-    text: renderClientText(order, totals),
-    html: renderClientHtml(order, totals),
+    subject: `#${orderRef} – Confirmation de commande`,
+    text: renderClientText(order, t, orderRef),
+    html: renderClientHtml(order, t, orderRef),
   });
 }
 
-function renderAdminText(order: OrderInput, t: { pricePerPiece: number; shipping: number; freeUnits: number; merchandise: number; total: number }) {
-  return `Nouvelle commande PLACHET
--------------------------
-Nom: ${order.name}
-Société: ${order.company || '-'}
-E-mail: ${order.email}
-Téléphone: ${order.phone}
-Adresse: ${order.address}
+/* -------------------- Helpers mise en forme -------------------- */
 
-Produit:
-- Taille: ${order.size}
-- Finition: ${order.finish}
-- Quantité demandée: ${order.qty}
-- Unités offertes: ${t.freeUnits}
-- Prix unitaire: ${money(t.pricePerPiece)}
-- Articles: ${money(t.merchandise)}
-- Livraison (BE): ${money(t.shipping)}
-- Total: ${money(t.total)}
-
-Notes: ${order.notes || '-'}
-
-Source: ${siteUrl}
-`;
+function addressLines(o: OrderInput) {
+  const l1 = `${o.addressStreet} ${o.addressNumber}${o.addressBox ? `, boîte ${o.addressBox}` : ''}`;
+  const l2 = `${o.postalCode} ${o.city}`;
+  return { l1, l2 };
 }
 
 function outerWrap(inner: string) {
@@ -79,99 +75,155 @@ function outerWrap(inner: string) {
       <td style="padding:22px">${inner}</td>
     </tr>
     <tr>
-      <td style="padding:16px 22px;color:#6b7280;font-size:12px;text-align:center">Cet e‑mail a été envoyé automatiquement depuis <a href="${siteUrl}" style="color:#8B5CF6;text-decoration:none">${siteUrl.replace('https://','')}</a>.</td>
+      <td style="padding:16px 22px;color:#6b7280;font-size:12px;text-align:center">Cet e-mail a été envoyé automatiquement depuis <a href="${SITE_URL}" style="color:#8B5CF6;text-decoration:none">${SITE_URL.replace('https://','')}</a>.</td>
     </tr>
   </table>
 </body></html>`;
 }
 
 function line(label: string, value: string) {
-  return `<tr><td style=\"padding:8px 0;color:#6b7280\">${label}</td><td style=\"padding:8px 0;text-align:right;font-weight:600;color:#111827\">${value}</td></tr>`;
+  return `<tr>
+    <td style="padding:8px 0;color:#6b7280">${label}</td>
+    <td style="padding:8px 0;text-align:right;font-weight:600;color:#111827">${value}</td>
+  </tr>`;
 }
 
 function sectionTitle(txt: string) {
-  return `<h2 style=\"margin:0 0 12px;font-size:16px;color:#111827\">${txt}</h2>`;
+  return `<h2 style="margin:0 0 12px;font-size:16px;color:#111827">${txt}</h2>`;
 }
 
-function pill(txt: string) {
-  return `<span style=\"display:inline-block;background:#10B9811a;color:#065f46;border-radius:999px;padding:4px 10px;font-size:12px\">${txt}</span>`;
+/* -------------------- ADMIN: texte + HTML -------------------- */
+
+function renderAdminText(o: OrderInput, t: Totals, ref: string) {
+  const { l1, l2 } = addressLines(o);
+  const freeUnits = Math.floor(o.qty / 10); // info pour le calcul
+  const calc = `${o.qty} × ${t.pricePerPiece}€${freeUnits ? ` − ${freeUnits} offert${freeUnits>1 ? 's' : ''}` : ''} = ${money(t.merchandise)}`;
+
+  return `Commande #${ref}
+-------------------------
+Société: ${o.company}
+TVA: ${o.vatNumber}
+Nom: ${o.name}
+E-mail: ${o.email}
+Téléphone: ${o.phone}
+
+Adresse:
+${l1}
+${l2}
+
+Produit:
+- Taille: ${o.size}
+- Finition: ${o.finish}
+- Quantité: ${o.qty}
+
+Récapitulatif:
+- Panneau de fenêtre (${o.qty} article${o.qty>1?'s':''}): ${calc}
+- Livraison (Belgique): ${money(t.shipping)}
+= Total: ${money(t.total)}
+
+Notes: ${o.notes || '-'}
+
+Source: ${SITE_URL}
+`;
 }
 
-function renderAdminHtml(order: OrderInput, t: { pricePerPiece: number; shipping: number; freeUnits: number; merchandise: number; total: number }) {
+function renderAdminHtml(o: OrderInput, t: Totals, ref: string) {
+  const { l1, l2 } = addressLines(o);
+  const freeUnits = Math.floor(o.qty / 10);
+  const calc = `${o.qty} × ${t.pricePerPiece}€${freeUnits ? ` − ${freeUnits} offert${freeUnits>1 ? 's' : ''}` : ''} = ${money(t.merchandise)}`;
+
   const inner = `
-    ${sectionTitle('Nouvelle commande')}
-    <p style="margin:0 0 16px">${order.name}${order.company ? ` · ${order.company}` : ''}</p>
-    <p style="margin:0 0 16px">${order.email} · ${order.phone}</p>
-    <p style="margin:0 0 16px;white-space:pre-wrap">${order.address}</p>
+    <p style="margin:0 0 12px;font-size:13px;color:#6b7280">Commande <strong>#${ref}</strong></p>
 
-    ${sectionTitle('Détails produit')}
+    ${sectionTitle('Nouvelle commande')}
+    <p style="margin:0 0 6px"><strong>Société:</strong> ${o.company}</p>
+    <p style="margin:0 0 16px"><strong>TVA:</strong> ${o.vatNumber}</p>
+    <p style="margin:0 0 16px">${o.name} · ${o.email} · ${o.phone}</p>
+
+    ${sectionTitle('Adresse')}
+    <p style="margin:0 0 4px">${l1}</p>
+    <p style="margin:0 0 16px">${l2}</p>
+
+    ${sectionTitle('Produit')}
     <table role="presentation" width="100%" style="border-collapse:collapse">
-      ${line('Taille', order.size)}
-      ${line('Finition', order.finish)}
-      ${line('Quantité', String(order.qty))}
-      ${line('Unités offertes', String(t.freeUnits))}
-      ${line('Prix unitaire', money(t.pricePerPiece))}
-      ${line('Articles', money(t.merchandise))}
+      ${line('Taille', o.size)}
+      ${line('Finition', o.finish)}
+      ${line('Quantité', String(o.qty))}
+    </table>
+
+    ${sectionTitle('Récapitulatif')}
+    <table role="presentation" width="100%" style="border-collapse:collapse">
+      ${line(`Panneau de fenêtre (${o.qty} article${o.qty>1?'s':''})`, calc)}
       ${line('Livraison (BE)', money(t.shipping))}
       ${line('<strong>Total</strong>', `<strong>${money(t.total)}</strong>`)}
     </table>
 
-    ${order.notes ? `${sectionTitle('Remarques')}<p style=\"margin:0 0 16px;white-space:pre-wrap\">${order.notes}</p>` : ''}
-
-    <p style="margin:16px 0 0;color:#6b7280;font-size:12px">Répondre à ce message pour contacter le client.</p>
+    ${o.notes ? `${sectionTitle('Remarques')}<p style="margin:0 0 16px;white-space:pre-wrap">${o.notes}</p>` : ''}
   `;
   return outerWrap(inner);
 }
 
-function renderClientText(order: OrderInput, t: { pricePerPiece: number; shipping: number; freeUnits: number; merchandise: number; total: number }) {
-  return `Bonjour ${order.name},
+/* -------------------- CLIENT: texte + HTML -------------------- */
 
-Merci pour votre commande chez PLACHET. Voici votre récapitulatif :
+function renderClientText(o: OrderInput, t: Totals, ref: string) {
+  const { l1, l2 } = addressLines(o);
+  const freeUnits = Math.floor(o.qty / 10);
+  const calc = `${o.qty} × ${t.pricePerPiece}€${freeUnits ? ` − ${freeUnits} offert${freeUnits>1 ? 's' : ''}` : ''} = ${money(t.merchandise)}`;
 
-• Taille: ${order.size}
-• Finition: ${order.finish}
-• Quantité: ${order.qty} (dont ${t.freeUnits} offert(s) par tranche de 10)
-• Prix unitaire: ${t.pricePerPiece}€
-• Articles: ${t.merchandise.toFixed(2)}€
-• Livraison (Belgique): ${t.shipping.toFixed(2)}€
-• Total: ${t.total.toFixed(2)}€
+  return `Commande #${ref}
+
+Merci pour votre commande chez PLACHET. Voici votre récapitulatif:
+
+• Taille: ${o.size}
+• Finition: ${o.finish}
+• Quantité: ${o.qty}
+
+Récapitulatif:
+• Panneau de fenêtre (${o.qty} article${o.qty>1?'s':''}): ${calc}
+• Livraison (Belgique): ${money(t.shipping)}
+= Total: ${money(t.total)}
 
 Adresse de livraison:
-${order.address}
+${l1}
+${l2}
 
-${order.notes ? `Remarques: ${order.notes}
-
-` : ''}Vous recevrez une facture par e‑mail pour valider la commande. Dès réception du paiement, nous prenons en charge la commande sous 24 h.
+${o.notes ? `Remarques: ${o.notes}\n\n` : ''}Vous recevrez une facture par e-mail pour valider la commande. Dès réception du paiement, nous prenons en charge la commande sous 24 h.
 
 Cordialement,
 PLACHET
-${siteUrl}`;
+${SITE_URL}`;
 }
 
-function renderClientHtml(order: OrderInput, t: { pricePerPiece: number; shipping: number; freeUnits: number; merchandise: number; total: number }) {
+function renderClientHtml(o: OrderInput, t: Totals, ref: string) {
+  const { l1, l2 } = addressLines(o);
+  const freeUnits = Math.floor(o.qty / 10);
+  const calc = `${o.qty} × ${t.pricePerPiece}€${freeUnits ? ` − ${freeUnits} offert${freeUnits>1 ? 's' : ''}` : ''} = ${money(t.merchandise)}`;
+
   const inner = `
+    <p style="margin:0 0 12px;font-size:13px;color:#6b7280">Commande <strong>#${ref}</strong></p>
+
     ${sectionTitle('Merci pour votre commande !')}
-    <p style="margin:0 0 12px">Bonjour <strong>${order.name}</strong>,</p>
-    <p style="margin:0 0 16px">Voici le récapitulatif de votre commande. ${pill('Facture à venir par e‑mail')} ${pill('Prise en charge sous 24 h après paiement')}</p>
+    <p style="margin:0 0 16px">Voici le récapitulatif. La facture vous sera envoyée par e-mail pour valider la commande.</p>
+
+    ${sectionTitle('Produit')}
+    <table role="presentation" width="100%" style="border-collapse:collapse">
+      ${line('Taille', o.size)}
+      ${line('Finition', o.finish)}
+      ${line('Quantité', String(o.qty))}
+    </table>
 
     ${sectionTitle('Récapitulatif')}
     <table role="presentation" width="100%" style="border-collapse:collapse">
-      ${line('Taille', order.size)}
-      ${line('Finition', order.finish)}
-      ${line('Quantité', String(order.qty))}
-      ${line('Unités offertes', String(t.freeUnits))}
-      ${line('Prix unitaire', money(t.pricePerPiece))}
-      ${line('Articles', money(t.merchandise))}
+      ${line(`Panneau de fenêtre (${o.qty} article${o.qty>1?'s':''})`, calc)}
       ${line('Livraison (BE)', money(t.shipping))}
       ${line('<strong>Total</strong>', `<strong>${money(t.total)}</strong>`)}
     </table>
 
     ${sectionTitle('Livraison')}
-    <p style="margin:0 0 16px;white-space:pre-wrap">${order.address}</p>
+    <p style="margin:0 0 4px">${l1}</p>
+    <p style="margin:0 0 16px">${l2}</p>
 
-    ${order.notes ? `${sectionTitle('Remarques')}<p style=\"margin:0 0 16px;white-space:pre-wrap\">${order.notes}</p>` : ''}
-
-    <p style="margin:16px 0 0;color:#6b7280;font-size:12px">Besoin d’aide ? Répondez à cet e‑mail ou contactez <a href="mailto:info@plachet.be" style="color:#8B5CF6;text-decoration:none">info@plachet.be</a>.</p>
+    ${o.notes ? `${sectionTitle('Remarques')}<p style="margin:0 0 16px;white-space:pre-wrap">${o.notes}</p>` : ''}
   `;
   return outerWrap(inner);
 }

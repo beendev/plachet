@@ -7,6 +7,9 @@ import Image from 'next/image';
 type SizeKey = '50x140' | '100x70' | '100x140';
 type Finish = 'adhesif' | 'ventouses';
 
+type ZodIssue = { path: (string | number)[]; message: string };
+type ApiResponse = { ok: boolean; error?: string; details?: ZodIssue[]; orderRef?: string };
+
 const SIZE_OPTIONS: { key: SizeKey; label: string; colorName: string; colorClass: string }[] = [
   { key: '100x70',  label: '100 × 70 cm',  colorName: 'Mauve',  colorClass: 'bg-[#8b5cf6]' },
   { key: '50x140',  label: '50 × 140 cm',  colorName: 'Orange', colorClass: 'bg-[#f59e0b]' },
@@ -24,22 +27,24 @@ const FINISH_OPTIONS: { key: Finish; label: string; desc: string }[] = [
   { key: 'ventouses', label: '4 ventouses',   desc: 'Fixation amovible' },
 ];
 
-// Réponse attendue de l'API
-type ApiResponse = { ok: boolean; error?: string };
-
 export default function ProductSelector() {
   // produit
   const [size, setSize] = useState<SizeKey>('100x70');
   const [finish, setFinish] = useState<Finish>('adhesif');
   const [qty, setQty] = useState<number>(1); // unités
 
-  // formulaire client
-  const [company, setCompany] = useState('');
-  const [name, setName]       = useState('');
-  const [email, setEmail]     = useState('');
-  const [phone, setPhone]     = useState('');
-  const [address, setAddress] = useState('');
-  const [notes, setNotes]     = useState('');
+  // formulaire client (tous requis sauf "boîte" & "notes")
+  const [company, setCompany]   = useState('');        // Société
+  const [vatNumber, setVat]     = useState('');        // TVA
+  const [name, setName]         = useState('');        // Nom & prénom
+  const [email, setEmail]       = useState('');        // E-mail
+  const [phone, setPhone]       = useState('');        // Téléphone
+  const [street, setStreet]     = useState('');        // Rue / Adresse
+  const [number, setNumber]     = useState('');        // Numéro
+  const [box, setBox]           = useState('');        // Boîte (optionnel)
+  const [postalCode, setPC]     = useState('');        // Code postal
+  const [city, setCity]         = useState('');        // Commune / Ville
+  const [notes, setNotes]       = useState('');        // Optionnel
 
   const [sending, setSending] = useState(false);
   const [okMsg, setOkMsg]     = useState<string | null>(null);
@@ -49,16 +54,12 @@ export default function ProductSelector() {
   const pricePerPiece = 15;  // €/pièce
   const shipBE = 4.99;       // € livraison Belgique
 
-  const { merchandise, total, freeUnits, discountPct } = useMemo(() => {
-    const freeUnits = Math.floor(qty / 10);          // 1 offert par tranche de 10
-    const payUnits  = Math.max(0, qty - freeUnits);  // unités payées
-    const merchandise = payUnits * pricePerPiece;    // articles
-    const total = merchandise + shipBE;              // articles + livraison fixe BE
-    const undiscounted = qty * pricePerPiece;
-    const discountPct = qty >= 10 && undiscounted > 0
-      ? Math.round((1 - merchandise / undiscounted) * 100)
-      : 0;
-    return { merchandise, total, freeUnits, discountPct };
+  const { merchandise, total, freeUnits } = useMemo(() => {
+    const freeUnits = Math.floor(qty / 10);              // 1 offert par 10
+    const payUnits  = Math.max(0, qty - freeUnits);
+    const merchandise = payUnits * pricePerPiece;
+    const total = merchandise + shipBE;
+    return { merchandise, total, freeUnits };
   }, [qty]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -72,25 +73,40 @@ export default function ProductSelector() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          company, name, email, phone, address, notes,
+          company, vatNumber, name, email, phone,
+          addressStreet: street,
+          addressNumber: number,
+          addressBox: box,
+          postalCode, city,
+          notes,
           size, finish, qty,
         }),
       });
 
       const data: ApiResponse = await res.json();
+
       if (!res.ok || !data.ok) {
-        throw new Error(data?.error ?? `Erreur (HTTP ${res.status})`);
+        const details =
+          data.details?.map(i => `• ${i.path.join('.')} — ${i.message}`).join('\n');
+        throw new Error(details || data.error || `Erreur (HTTP ${res.status})`);
       }
 
-      setOkMsg("Commande envoyée. Vous allez recevoir un e-mail de confirmation avec le récapitulatif. La facture suivra pour valider la commande.");
-      // reset minimal (on garde le produit choisi)
-      setCompany(''); setName(''); setEmail(''); setPhone(''); setAddress(''); setNotes('');
+      setOkMsg(
+        `Commande envoyée${data.orderRef ? ` · Référence: ${data.orderRef}` : ''}. Vous allez recevoir un e-mail de confirmation avec le récapitulatif. La facture suivra pour valider la commande.`
+      );
+      // reset minimal (on garde le produit)
+      setCompany(''); setVat(''); setName(''); setEmail(''); setPhone('');
+      setStreet(''); setNumber(''); setBox(''); setPC(''); setCity('');
+      setNotes('');
     } catch (err: unknown) {
+      console.error('order error:', err);
       setErrMsg(err instanceof Error ? err.message : 'Une erreur est survenue.');
     } finally {
       setSending(false);
     }
   }
+
+  const calcLabel = `${qty} × ${pricePerPiece}€${freeUnits ? ` − ${freeUnits} offert${freeUnits>1 ? 's' : ''}` : ''} = ${merchandise.toFixed(2)}€`;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
@@ -122,7 +138,7 @@ export default function ProductSelector() {
       <div>
         <h3 className="text-xl font-semibold">Panneau de fenêtre (à l’unité)</h3>
         <p className="mt-1 text-sm text-gray-600">
-          15€ / pièce — à l’achat de 10, <span className="font-medium">1 panneau offert</span>. Livraison partout en Belgique : 4,99€.
+          15€ / pièce — à l’achat de 10 = <span className="font-medium">1 panneau offert</span>.<br/>Livraison partout en Belgique : 4,99€.
         </p>
 
         {/* Taille */}
@@ -174,18 +190,16 @@ export default function ProductSelector() {
               15€ / pièce · 1 offert par tranche de 10
             </div>
           </div>
-          {qty >= 10 && (
-            <p className="mt-2 text-xs text-gray-700">
-              Vous économisez {discountPct}% à l’achat de 10.
-            </p>
-          )}
         </div>
 
-        {/* Récap prix */}
+        {/* Récap prix (libellés ajustés) */}
         <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200 space-y-1">
           <div className="flex items-center justify-between text-sm">
-            <span>Articles</span>
+            <span>{`Panneau de fenêtre (${qty} article${qty > 1 ? 's' : ''})`}</span>
             <span>{merchandise.toFixed(2)}€</span>
+          </div>
+          <div className="text-xs text-gray-500">
+            {calcLabel}
           </div>
           <div className="flex items-center justify-between text-sm">
             <span>Livraison (Belgique)</span>
@@ -195,17 +209,22 @@ export default function ProductSelector() {
             <span>Total</span>
             <span className="text-lg font-semibold">{total.toFixed(2)}€</span>
           </div>
-          {freeUnits > 0 && (
-            <p className="text-xs text-gray-500">Unités offertes : {freeUnits}</p>
-          )}
         </div>
 
         {/* Formulaire client + submit */}
         <form onSubmit={handleSubmit} className="mt-6 space-y-3">
           <input
-            placeholder="Société (optionnel)"
+            placeholder="Société"
             value={company}
             onChange={(e) => setCompany(e.target.value)}
+            required
+            className="w-full rounded-xl border border-gray-300 px-3 py-2"
+          />
+          <input
+            placeholder="Numéro de TVA"
+            value={vatNumber}
+            onChange={(e) => setVat(e.target.value)}
+            required
             className="w-full rounded-xl border border-gray-300 px-3 py-2"
           />
           <input
@@ -232,14 +251,47 @@ export default function ProductSelector() {
               className="w-full rounded-xl border border-gray-300 px-3 py-2"
             />
           </div>
-          <textarea
-            placeholder="Adresse de livraison"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            required
-            rows={3}
-            className="w-full rounded-xl border border-gray-300 px-3 py-2"
-          />
+
+          {/* Adresse détaillée */}
+          <div className="grid sm:grid-cols-4 gap-3">
+            <input
+              placeholder="Rue / Adresse"
+              value={street}
+              onChange={(e) => setStreet(e.target.value)}
+              required
+              className="sm:col-span-2 rounded-xl border border-gray-300 px-3 py-2"
+            />
+            <input
+              placeholder="N°"
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              required
+              className="rounded-xl border border-gray-300 px-3 py-2"
+            />
+            <input
+              placeholder="Boîte (optionnel)"
+              value={box}
+              onChange={(e) => setBox(e.target.value)}
+              className="rounded-xl border border-gray-300 px-3 py-2"
+            />
+          </div>
+          <div className="grid sm:grid-cols-3 gap-3">
+            <input
+              placeholder="Code postal"
+              value={postalCode}
+              onChange={(e) => setPC(e.target.value)}
+              required
+              className="rounded-xl border border-gray-300 px-3 py-2"
+            />
+            <input
+              placeholder="Commune / Ville"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              required
+              className="sm:col-span-2 rounded-xl border border-gray-300 px-3 py-2"
+            />
+          </div>
+
           <textarea
             placeholder="Remarques (optionnel)"
             value={notes}
@@ -256,8 +308,8 @@ export default function ProductSelector() {
             {sending ? 'Envoi…' : 'Commander par e-mail'}
           </button>
 
-          {okMsg && <p className="text-green-700 text-sm">{okMsg}</p>}
-          {errMsg && <p className="text-red-600 text-sm">{errMsg}</p>}
+          {okMsg && <p className="text-green-700 text-sm whitespace-pre-wrap">{okMsg}</p>}
+          {errMsg && <p className="text-red-600 text-sm whitespace-pre-wrap">{errMsg}</p>}
         </form>
       </div>
     </div>
