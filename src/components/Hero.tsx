@@ -6,7 +6,7 @@ export default function Hero() {
   return (
     <header
       className="
-        relative isolate min-h-[100svh] flex items-center overflow-hidden bg-white
+        relative isolate min-h-[75svh] flex items-center overflow-hidden bg-white
       "
     >
       {/* Un SEUL dégradé gris, discret, centré sur la zone du titre */}
@@ -28,7 +28,7 @@ export default function Hero() {
               transition={{ duration: 0.6, ease: "easeOut" }}
               className="
                 leading-[0.9] tracking-tight font-extrabold
-                text-[clamp(48px,8.8vw,108px)]
+                text-[clamp(64px,8.9vw,116px)]
                 bg-clip-text text-transparent bg-gradient-to-b from-neutral-900 to-neutral-700
               "
             >
