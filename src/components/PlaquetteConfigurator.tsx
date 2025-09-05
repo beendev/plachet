@@ -3,6 +3,9 @@
 
 import { useMemo, useState } from "react";
 
+import type { DependencyList } from "react";
+
+
 /* ---------- Types ---------- */
 type FixationKey =
   | "none"
@@ -207,33 +210,39 @@ export default function PlaquetteConfigurator() {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
       {/* Aperçu sticky */}
       <div className="rounded-2xl border border-gray-200 p-4 md:sticky md:top-24 self-start">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium">Aperçu instantané</h3>
-          <span className="text-xs text-gray-500">
-            {width}×{height} mm
-          </span>
-        </div>
+    <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium">Aperçu instantané</h3>
+        <span className="text-xs text-gray-500">
+        {width}×{height} mm
+        </span>
+    </div>
 
-        <div className="relative w-full aspect-[3/1] rounded-xl grid place-items-center bg-neutral-100 p-4">
-          <div
-            className="shadow-md grid place-items-center"
+    <div className="relative w-full aspect-[3/1] rounded-xl grid place-items-center bg-neutral-100 p-4">
+        {/* Plaque */}
+        <div
+        className="shadow-md grid place-items-center overflow-hidden"
+        style={{
+            background: colorDef.plate,
+            color: colorDef.text,
+            borderRadius: rounded ? 12 : 4,
+            width: "92%",
+            height: "62%",
+        }}
+        >
+        <div
+            ref={useFitText(content, { min: 12, max: 46, pad: 12, deps: [width, height, font, rounded, color] })}
+            className={`px-3 text-center leading-tight ${fontClass}`}
             style={{
-              background: colorDef.plate,
-              color: colorDef.text,
-              borderRadius: rounded ? 12 : 4,
-              width: "92%",
-              height: "62%",
+            lineHeight: 1.05,
+            wordBreak: "break-word",
+            hyphens: "auto",
             }}
-          >
-            <div
-              className={`px-4 text-center leading-tight break-words ${fontClass}`}
-              style={{ fontSize: clampPx(content) }}
-              title={content}
-            >
-              {content}
-            </div>
-          </div>
+            title={content}
+        >
+            {content}
         </div>
+        </div>
+    </div>
 
         {/* Couleurs */}
         <div className="mt-4">
@@ -585,4 +594,57 @@ function clampPx(text: string) {
   if (len < 26) return "28px";
   if (len < 34) return "24px";
   return "20px";
+}
+
+
+
+import { useLayoutEffect, useRef } from "react";
+
+function useFitText(
+  text: string,
+  opts?: { min?: number; max?: number; pad?: number; deps?: DependencyList }
+) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const parent = el.parentElement as HTMLElement;
+    if (!parent) return;
+
+    const MIN = opts?.min ?? 12;
+    const MAX = opts?.max ?? 46;
+    const PAD = opts?.pad ?? 8;
+
+    const calc = () => {
+      el.style.whiteSpace = "pre-wrap";
+      el.style.wordBreak = "break-word";
+
+      let lo = MIN;
+      let hi = MAX;
+      let best = MIN;
+
+      for (let i = 0; i < 12; i++) {
+        const mid = Math.floor((lo + hi) / 2);
+        el.style.fontSize = mid + "px";
+
+        const fits =
+          el.scrollWidth <= parent.clientWidth - PAD &&
+          el.scrollHeight <= parent.clientHeight - PAD;
+
+        if (fits) { best = mid; lo = mid + 1; }
+        else { hi = mid - 1; }
+      }
+      el.style.fontSize = best + "px";
+    };
+
+    const ro = new ResizeObserver(calc);
+    ro.observe(parent);
+    calc();
+
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, ...(opts?.deps ?? ([] as DependencyList))]);
+
+  return ref;
 }
