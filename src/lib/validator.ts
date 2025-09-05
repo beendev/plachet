@@ -1,30 +1,41 @@
 // lib/validator.ts
-import { z } from 'zod';
+import { z } from "zod";
+
+export const pricingSchema = z
+  .object({
+    unitPrice: z.number().nonnegative().optional(),
+    merchandise: z.number().nonnegative().optional(),
+    shipping: z.number().nonnegative().optional(),
+    placement: z.number().nonnegative().optional(), // si un jour tu factures le placement
+    total: z.number().nonnegative().optional(),
+  })
+  .partial();
 
 export const orderSchema = z.object({
-  // Société / TVA (obligatoires)
-  company: z.string().min(2).max(120),
-  vatNumber: z.string().min(8).max(32),
-
-  // Contact
-  name: z.string().min(2).max(120),
+  // Client
+  company: z.string().min(1),
+  vatNumber: z.string().min(1),
+  name: z.string().min(1),
   email: z.string().email(),
-  phone: z.string().min(6).max(40),
+  phone: z.string().min(3),
 
-  // Adresse détaillée
-  addressStreet: z.string().min(2).max(160),
-  addressNumber: z.string().min(1).max(10),
-  addressBox: z.string().max(20).optional().or(z.literal('')),
-  postalCode: z.string().min(3).max(16),
-  city: z.string().min(2).max(80),
+  // Adresse
+  addressStreet: z.string().min(1),
+  addressNumber: z.string().min(1),
+  addressBox: z.string().optional().nullable(),
+  postalCode: z.string().min(1),
+  city: z.string().min(1),
 
-  // Produit
-  size: z.enum(['50x140', '100x70', '100x140']),
-  finish: z.enum(['adhesif', 'ventouses']),
-  qty: z.coerce.number().int().min(1).max(1000), // coerce évite les 400 si "qty" arrive en string
+  // Produit (affiché dans le récap)
+  size: z.string().min(1),
+  finish: z.string().min(1),
+  qty: z.number().int().positive(),
 
   // Divers
-  notes: z.string().max(1000).optional().or(z.literal('')),
+  notes: z.string().optional().default(""),
+  product: z.enum(["panneau", "plaquette"]).optional(), // indicatif
+  pricing: pricingSchema.optional(),                    // si présent => on l’utilise
 });
 
 export type OrderInput = z.infer<typeof orderSchema>;
+export type PricingInput = z.infer<typeof pricingSchema>;
