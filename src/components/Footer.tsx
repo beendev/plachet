@@ -1,6 +1,8 @@
 // components/Footer.tsx
 "use client";
 
+import Image from "next/image";
+
 export default function Footer() {
   return (
     <footer className="mt-16 bg-gradient-to-b border-t from-white to-neutral-50 relative">
@@ -12,12 +14,20 @@ export default function Footer() {
 
       {/* Contenu principal */}
       <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-2 gap-10 items-start">
-        {/* Gauche : marque + slogan (police par défaut) */}
-        <div className="space-y-2 text-center md:text-left">
-          <p className="text-[clamp(28px,5vw,40px)] leading-none text-neutral-900 font-semibold tracking-tight">
-            Plachet
-          </p>
-          <p className="text-sm text-neutral-600">Vos Plaques et vos chachets</p>
+        {/* Gauche : logo + slogan */}
+        <div className="space-y-3 text-center md:text-left">
+         <a href="" className="inline-block">
+          <Image
+            src="/PLACHET.svg"
+            alt="Plachet"
+            width={420}
+            height={120}
+            priority
+            sizes="(min-width:1024px) 320px, 240px"
+            className="w-auto h-12 sm:h-14 md:h-16 lg:h-20"
+          />
+        </a>
+         
         </div>
 
         {/* Droite : coordonnées avec icônes */}
@@ -76,7 +86,7 @@ function Item({
   );
 }
 
-/* --- Icônes inline (pas de lib externe nécessaire) --- */
+/* --- Icônes inline --- */
 function MapPinIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
