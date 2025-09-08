@@ -1,14 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Great_Vibes } from "next/font/google";
-
-const script = Great_Vibes({ subsets: ["latin"], weight: "400" });
 
 export default function Hero() {
   return (
     <header className="relative isolate min-h-[85svh] md:min-h-[75svh] flex items-center overflow-hidden bg-white">
-      {/* Dégradé linéaire discret — pleine largeur, centré (recouvre les deux colonnes) */}
+      {/* Dégradé plein large, discret */}
       <div
         aria-hidden
         className="
@@ -16,26 +13,25 @@ export default function Hero() {
           bg-[linear-gradient(90deg,white_0%,#f6f7f9_20%,#eceff1_50%,#f6f7f9_80%,white_100%)]
         "
       />
-      {/* transition douce avec la section suivante */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-white"
       />
 
       <div className="w-full max-w-[1400px] mx-auto px-6 md:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-12 items-center gap-10 md:gap-14 lg:gap-20">
-          {/* Gauche : logo + slogan (très visibles sur mobile) */}
-          <div className="md:col-span-6  flex flex-col items-center md:items-start md:pl-6 lg:pl-10">
+        <div className="grid grid-cols-1 md:grid-cols-12 items-center gap-10 md:gap-16 lg:gap-28">
+          {/* GAUCHE : titre + slogan (titre réduit + marge à droite) */}
+          <div className="md:col-span-6 flex flex-col items-center md:items-start md:pl-6 lg:pl-10 md:pr-12">
             <motion.h1
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 0.6, ease: "easeOut" }}
-              className={`${script.className}
-                leading-[0.86] tracking-tight text-neutral-900 
-                text-[clamp(56px,18vw,220px)]
-              `}
+              className="
+                leading-[0.86] tracking-tight text-neutral-900 font-extrabold whitespace-nowrap
+                text-[clamp(40px,7.2vw,112px)] md:text-[clamp(48px,6.6vw,128px)]
+              "
             >
-              Plachet
+              PLACHET
             </motion.h1>
 
             <motion.p
@@ -48,11 +44,11 @@ export default function Hero() {
                 text-neutral-700
               "
             >
-              Vos Plaques et vos chachets
+              Vos Plaques et Cachet
             </motion.p>
           </div>
 
-          {/* Droite : texte marketing avec plus d'air en haut sur mobile */}
+          {/* DROITE : texte marketing (inchangé) */}
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
