@@ -8,5 +8,7 @@ coverage/
 *.sqlite
 *.db
 test-results/
+backups/
+.claude/
 .env*
 !.env.example
