@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Contact } from '../../components/marketing/Contact';
 import { Footer } from '../../components/marketing/Footer';
 import { Hero } from '../../components/marketing/Hero';
@@ -12,7 +13,18 @@ type LandingPageProps = {
   onHomeClick: () => void;
 };
 
-export const LandingPage = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeClick }: LandingPageProps) => (
+export const LandingPage = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeClick }: LandingPageProps) => {
+  useEffect(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash) {
+      setTimeout(() => {
+        const el = document.getElementById(hash);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+    }
+  }, []);
+
+  return (
   <div className="min-h-screen bg-white font-sans text-black selection:bg-black selection:text-white">
     <Navbar onPortalClick={onPortalClick} onRegisterClick={onRegisterClick} onCachetsClick={onCachetsClick} onHomeClick={onHomeClick} />
     <main>
@@ -23,4 +35,5 @@ export const LandingPage = ({ onPortalClick, onRegisterClick, onCachetsClick, on
     </main>
     <Footer onPortalClick={onPortalClick} />
   </div>
-);
+  );
+};

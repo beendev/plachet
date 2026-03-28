@@ -10,7 +10,12 @@ type NavbarProps = {
 
 const scrollTo = (id: string) => {
   const el = document.getElementById(id);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    // If section not on current page, navigate to landing with hash
+    window.location.href = `/#${id}`;
+  }
 };
 
 export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeClick }: NavbarProps) => {
