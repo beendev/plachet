@@ -34,6 +34,13 @@ const getPostLoginPath = (role: string) => {
 
 const LandingRoute = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // If already logged in, redirect to dashboard
+  if (user?.role) {
+    return <Navigate to={getPostLoginPath(user.role)} replace />;
+  }
+
   return (
     <LandingPage
       onPortalClick={() => navigate('/syndic/login')}
