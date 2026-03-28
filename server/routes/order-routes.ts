@@ -63,6 +63,11 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
     updateSignage: updateSupabaseSignage,
     updateUser: updateSupabaseUser,
     verifyOwnerApprovalToken,
+    createBugReport,
+    listBugReports,
+    updateBugReport,
+    deleteBugReport,
+    getStats,
   } = pickDeps(deps);
     const isMissingOwnerReferenceColumnError = (error: any) => {
       const message = String(error?.message || error?.details || error || "").toLowerCase();
@@ -127,8 +132,16 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
     };
     const getAuthUser = (req: any) => {
       const auth = (req as any).authUser;
-      if (!auth?.userId || !auth?.role) return null;
-      return { userId: Number(auth.userId), role: String(auth.role) };
+      if (auth?.userId && auth?.role) return { userId: Number(auth.userId), role: String(auth.role) };
+      // Fallback: middleware injects userId/role into query in dev mode
+      const qUserId = req.query?.userId ? Number(req.query.userId) : null;
+      const qRole = req.query?.role ? String(req.query.role) : null;
+      const bUserId = req.body?.userId ? Number(req.body.userId) : null;
+      const bRole = req.body?.role ? String(req.body.role) : null;
+      const userId = qUserId || bUserId;
+      const role = qRole || bRole;
+      if (userId && role) return { userId, role };
+      return null;
     };
     const resolveAppBaseUrl = (req: Request) => {
       const env = getServerEnv();
@@ -160,6 +173,8 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
       ["en_pose", "en_pose"],
       ["posée", "posée"],
       ["posee", "posée"],
+      ["facturée", "facturée"],
+      ["facturee", "facturée"],
       ["annulée", "annulée"],
       ["annulee", "annulée"],
     ]);
@@ -175,7 +190,7 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
       expédiée: new Set(["livrée", "annulée"]),
       livrée: new Set(["en_pose", "posée", "annulée"]),
       en_pose: new Set(["posée", "annulée"]),
-      posée: new Set(),
+      posée: new Set(["facturée"]),
       annulée: new Set(),
     };
     const canTransitionOrderStatus = (currentStatus: unknown, nextStatus: unknown) => {
@@ -748,8 +763,9 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
     });
 
     app.get("/api/orders", async (req, res) => {
-      const { userId, role } = req.query;
-      const orders = await listSupabaseOrders(String(role), userId ? Number(userId) : undefined);
+      const auth = getAuthUser(req);
+      if (!auth) return res.status(401).json({ error: "Authentification requise." });
+      const orders = await listSupabaseOrders(auth.role, auth.userId);
       res.json(orders);
     });
 
@@ -837,7 +853,7 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
     });
 
     app.post("/api/orders/:id/photo", async (req, res) => {
-      const { type, image, role, userId } = req.body;
+      const { type, image, role, userId, geo } = req.body;
       const auth = getAuthUser(req);
       const actingRole = role || auth?.role || "";
       const actingUserId = userId || auth?.userId;
@@ -867,10 +883,57 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
       }
 
       const column = type === "before" ? "photo_before" : "photo_after";
-      await updateSupabaseOrder(req.params.id, { [column]: image });
+      const geoColumn = type === "before" ? "photo_before_geo" : "photo_after_geo";
+      const updatePayload: Record<string, any> = { [column]: image };
+      // Save geolocation data if provided
+      if (geo && typeof geo === "object" && typeof geo.lat === "number" && typeof geo.lng === "number") {
+        updatePayload[geoColumn] = { lat: geo.lat, lng: geo.lng, accuracy: geo.accuracy ?? null };
+      }
+      // Track which placeur is doing the installation
+      if (actingRole === "placeur" && actingUserId && !order.placeur_id) {
+        updatePayload.placeur_id = Number(actingUserId);
+      }
+      await updateSupabaseOrder(req.params.id, updatePayload);
       const refreshed: any = await getSupabaseOrder(req.params.id);
-      if (refreshed?.photo_before && refreshed?.photo_after) {
+      if (refreshed?.photo_before && refreshed?.photo_after && refreshed.status === "en_pose") {
         await updateSupabaseOrder(req.params.id, { status: "posée" });
+
+        // Notify syndic that installation is complete
+        try {
+          const building = await getSupabaseBuilding(refreshed.building_id);
+          const buildingName = building?.name || `Immeuble #${refreshed.building_id}`;
+          const userBuilding = await getSupabaseUserBuildingByBuildingId(refreshed.building_id);
+          if (userBuilding?.user_id) {
+            await createSupabaseNotification({
+              user_id: userBuilding.user_id,
+              type: "order",
+              title: "Plaques installees",
+              message: `La pose pour la commande ${refreshed.order_number || `#${refreshed.id}`} (${buildingName}) est terminee. Les photos avant/apres sont disponibles.`,
+            });
+          }
+        } catch (_notifError) {
+          // Don't block the response if notification fails
+        }
+
+        // Send email to requester
+        try {
+          if (refreshed.requester_email) {
+            const building = await getSupabaseBuilding(refreshed.building_id);
+            await resend.emails.send({
+              from: "Plachet <info@plachet.be>",
+              to: refreshed.requester_email,
+              subject: "Votre plaquette a ete installee",
+              html: generateEmailTemplate(
+                "Installation terminee",
+                `<p>Bonjour <strong>${refreshed.requester_name || ""}</strong>,</p>
+                 <p>Votre plaquette pour l'immeuble <strong>${building?.name || ""}</strong> a ete posee avec succes.</p>
+                 <p>Merci pour votre confiance.</p>`
+              ),
+            });
+          }
+        } catch (_emailError) {
+          // Don't block the response if email fails
+        }
       }
       res.json({ success: true });
     });
@@ -878,14 +941,21 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
     app.get("/api/placeurs/orders", async (req, res) => {
       const auth = getAuthUser(req);
       if (!auth || auth.role !== "placeur") return res.status(403).json({ error: "Acces placeur requis." });
-      const orders = await listSupabaseOrders("placeur", auth.userId);
-      const filtered = orders.filter((o: any) => ["en_pose", "in_production", "posée"].includes(String(o.status || "")));
+      // Placeur sees all en_pose/posée orders assigned to them or unassigned — no building filter
+      const orders = await listSupabaseOrders("admin");
+      const filtered = orders.filter((o: any) => {
+        if (!["en_pose", "posée"].includes(String(o.status || ""))) return false;
+        // Show orders assigned to this placeur OR not yet assigned to anyone
+        return !o.placeur_id || Number(o.placeur_id) === Number(auth.userId);
+      });
       res.json(filtered);
     });
 
     app.get("/api/orders/export", async (req, res) => {
-      const role = String(req.query.role || "admin");
-      const userId = req.query.userId ? Number(req.query.userId) : undefined;
+      const auth = getAuthUser(req);
+      if (!auth) return res.status(401).json({ error: "Authentification requise." });
+      const role = auth.role;
+      const userId = auth.userId;
       const orders = await listSupabaseOrders(role, userId);
       const issuer = userId ? await getSupabaseUserById(userId) : null;
       const pdfBuffer = buildPdfBuffer(orders, {
@@ -900,12 +970,14 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
     });
 
     app.post("/api/orders/export/send", async (req, res) => {
-      const { role, userId, toEmail } = req.body;
+      const auth = getAuthUser(req);
+      if (!auth) return res.status(401).json({ error: "Authentification requise." });
+      const { toEmail } = req.body;
       if (!toEmail) {
         return res.status(400).json({ error: "Email destinataire requis." });
       }
 
-      const orders = await listSupabaseOrders(String(role || "admin"), userId ? Number(userId) : undefined);
+      const orders = await listSupabaseOrders(auth.role, auth.userId);
       const total = orders.length;
       const awaitingOwner = orders.filter((o: any) => OWNER_APPROVAL_PENDING_STATUSES.has(String(o.status || ""))).length;
       const installed = orders.filter((o: any) => String(o.status || "") === "posée").length;
@@ -914,7 +986,7 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
         const status = String(o.status || "");
         return !OWNER_APPROVAL_PENDING_STATUSES.has(status) && status !== "posée" && status !== "annulée";
       }).length;
-      const issuer = userId ? await getSupabaseUserById(Number(userId)) : null;
+      const issuer = auth.userId ? await getSupabaseUserById(Number(auth.userId)) : null;
       const pdfBase64 = buildPdfBuffer(orders, {
         issuerName: issuer?.name,
         issuerCompany: issuer?.company_name,
@@ -1137,6 +1209,87 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
       if (!link) return res.status(404).json({ error: "Lien invalide ou expiré" });
       const signage = await listSupabaseSignageForBuilding(link.building_id);
       res.json({ ...link, signage });
+    });
+
+    // ── Bug Reports ──
+
+    app.post("/api/bug-reports", async (req, res) => {
+      const auth = getAuthUser(req);
+      if (!auth) return res.status(401).json({ error: "Authentification requise." });
+      const { title, description, severity, page_url } = req.body;
+      if (!title || typeof title !== "string" || title.trim().length < 3) {
+        return res.status(400).json({ error: "Titre requis (min 3 caracteres)." });
+      }
+      try {
+        const user = await getSupabaseUserById(auth.userId);
+        const report = await createBugReport({
+          reported_by_user_id: auth.userId,
+          reporter_name: user?.name || "Inconnu",
+          reporter_email: user?.email || "",
+          reporter_role: auth.role,
+          title: String(title).trim().slice(0, 200),
+          description: String(description || "").slice(0, 5000),
+          severity: ["low", "medium", "high", "critical"].includes(severity) ? severity : "medium",
+          page_url: String(page_url || "").slice(0, 500),
+          user_agent: String(req.headers["user-agent"] || "").slice(0, 500),
+        });
+        res.json(report);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || "Erreur" });
+      }
+    });
+
+    app.get("/api/bug-reports", async (req, res) => {
+      const auth = getAuthUser(req);
+      if (!auth || auth.role !== "admin") return res.status(403).json({ error: "Admin requis." });
+      try {
+        const reports = await listBugReports();
+        res.json(reports);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || "Erreur" });
+      }
+    });
+
+    app.patch("/api/bug-reports/:id", async (req, res) => {
+      const auth = getAuthUser(req);
+      if (!auth || auth.role !== "admin") return res.status(403).json({ error: "Admin requis." });
+      const { status, admin_notes } = req.body;
+      const payload: Record<string, any> = {};
+      if (status && ["open", "in_progress", "resolved", "closed", "wont_fix"].includes(status)) {
+        payload.status = status;
+        if (status === "resolved" || status === "closed") payload.resolved_at = new Date().toISOString();
+      }
+      if (admin_notes !== undefined) payload.admin_notes = String(admin_notes).slice(0, 5000);
+      try {
+        const updated = await updateBugReport(req.params.id, payload);
+        res.json(updated);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || "Erreur" });
+      }
+    });
+
+    app.delete("/api/bug-reports/:id", async (req, res) => {
+      const auth = getAuthUser(req);
+      if (!auth || auth.role !== "admin") return res.status(403).json({ error: "Admin requis." });
+      try {
+        await deleteBugReport(req.params.id);
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || "Erreur" });
+      }
+    });
+
+    // ── Stats ──
+
+    app.get("/api/stats", async (req, res) => {
+      const auth = getAuthUser(req);
+      if (!auth || auth.role !== "admin") return res.status(403).json({ error: "Admin requis." });
+      try {
+        const stats = await getStats();
+        res.json(stats);
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || "Erreur" });
+      }
     });
 }
 

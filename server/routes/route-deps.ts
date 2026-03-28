@@ -135,6 +135,11 @@ export type ServerRouteDeps = {
   ) => Promise<any>;
   updateUser: (id: number | string, payload: Record<string, unknown>) => Promise<any>;
   verifyOwnerApprovalToken: (token: string) => { orderId: string; ownerEmail: string; exp: number };
+  createBugReport: (payload: Record<string, unknown>) => Promise<any>;
+  listBugReports: () => Promise<any[]>;
+  updateBugReport: (id: number | string, payload: Record<string, unknown>) => Promise<any>;
+  deleteBugReport: (id: number | string) => Promise<unknown>;
+  getStats: () => Promise<{ orders: any[]; buildings: any[]; users: any[]; bugReports: any[] }>;
 };
 
 export const pickDeps = (deps: ServerRouteDeps) => deps;

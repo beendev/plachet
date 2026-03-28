@@ -39,6 +39,11 @@ import {
   deleteNotification as deleteSupabaseNotification,
   deleteSignage as deleteSupabaseSignage,
   getSignageById,
+  createBugReport,
+  listBugReports,
+  updateBugReport,
+  deleteBugReport,
+  getStats,
   deleteUser as deleteSupabaseUser,
   emailExists as supabaseEmailExists,
   findBuildingByIdentity as findSupabaseBuildingByIdentity,
@@ -121,8 +126,8 @@ async function startServer() {
     app.use(helmet({ contentSecurityPolicy: false }));
   }
 
-  app.use(express.json({ limit: '5mb' }));
-  app.use(express.urlencoded({ limit: '5mb', extended: true }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true, service: "plachet", env: serverEnv.nodeEnv });
@@ -287,6 +292,11 @@ async function startServer() {
     generateEmailTemplate,
     getActiveBuildingSyndicAssignment: getSupabaseActiveBuildingSyndicAssignment,
     getSignageById,
+    createBugReport,
+    listBugReports,
+    updateBugReport,
+    deleteBugReport,
+    getStats,
     getSupabaseBuilding,
     getSupabaseBuildingWithSignage,
     getBuildingTransferRequest: getSupabaseBuildingTransferRequest,

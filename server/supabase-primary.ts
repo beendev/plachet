@@ -154,8 +154,14 @@ async function getAccessibleBuildingIds(userId: number) {
   if (currentUserError) throw currentUserError;
   if (!currentUser) return [];
 
-  // Placeur : accès strictement sur ses propres attributions, sans héritage organisation
+  // Placeur : si has_full_building_access, hérite de tous les buildings de l'organisation parente
   if (currentUser.role === "placeur") {
+    if (currentUser.has_full_building_access && currentUser.parent_id) {
+      const orgUserIds = await getAccessibleUserIds(currentUser.parent_id);
+      const { data, error } = await client.from("user_buildings").select("building_id").in("user_id", orgUserIds);
+      if (error) throw error;
+      return Array.from(new Set((data || []).map((row) => Number(row.building_id))));
+    }
     const { data, error } = await client.from("user_buildings").select("building_id").eq("user_id", userId);
     if (error) throw error;
     return Array.from(new Set((data || []).map((row) => Number(row.building_id))));
@@ -1340,4 +1346,63 @@ export async function markAllNotificationsRead(role: string, userId?: number) {
 export async function deleteNotification(id: number | string) {
   const { error } = await getClient().from("notifications").delete().eq("id", id);
   if (error) throw error;
+}
+
+// ── Bug Reports ──
+
+export async function createBugReport(payload: AnyRecord) {
+  const { data, error } = await getClient().from("bug_reports").insert(payload).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+export async function listBugReports() {
+  const { data, error } = await getClient()
+    .from("bug_reports")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function updateBugReport(id: number | string, payload: AnyRecord) {
+  const { data, error } = await getClient()
+    .from("bug_reports")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteBugReport(id: number | string) {
+  const { error } = await getClient().from("bug_reports").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ── Stats ──
+
+export async function getStats() {
+  const client = getClient();
+
+  const [ordersRes, buildingsRes, usersRes, bugReportsRes] = await Promise.all([
+    client.from("orders").select("id, status, building_id, created_at, placeur_id, requester_quality"),
+    client.from("buildings").select("id, status, created_at, survey_date, archived_at"),
+    client.from("users").select("id, role, deleted_at, parent_id, name"),
+    client.from("bug_reports").select("id, status, severity, created_at"),
+  ]);
+
+  if (ordersRes.error) throw ordersRes.error;
+  if (buildingsRes.error) throw buildingsRes.error;
+  if (usersRes.error) throw usersRes.error;
+  // bug_reports table might not exist yet
+  const bugReports = bugReportsRes.error ? [] : bugReportsRes.data || [];
+
+  return {
+    orders: ordersRes.data || [],
+    buildings: buildingsRes.data || [],
+    users: usersRes.data || [],
+    bugReports,
+  };
 }

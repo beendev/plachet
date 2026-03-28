@@ -123,6 +123,8 @@ export const getOrderStatusLabel = (status: string) => {
       return 'Recue';
     case 'en_traitement':
       return 'En traitement';
+    case 'in_production':
+      return 'En production';
     case 'en_pose':
       return 'En pose';
     case 'posée':
@@ -141,6 +143,8 @@ export const getOrderStatusClass = (status: string) => {
     case 'validation_proprietaire':
     case 'en_attente_validation':
       return 'bg-red-100 text-red-700';
+    case 'in_production':
+      return 'bg-indigo-100 text-indigo-700';
     case 'en_pose':
       return 'bg-blue-100 text-blue-700';
     case 'posée':

@@ -1,5 +1,6 @@
 import type { Express, Request } from "express";
 import { randomBytes } from "crypto";
+import QRCode from "qrcode";
 import { pickDeps, type ServerRouteDeps } from "./route-deps";
 import { getServerEnv } from "../env";
 
@@ -758,6 +759,44 @@ export function registerSupabaseBuildingRoutes(app: Express, deps: ServerRouteDe
       });
     } catch (error: any) {
       return res.status(500).json({ error: error?.message || "Impossible de generer le lien QR hall." });
+    }
+  });
+
+  // Generate QR code as SVG for a building's hall QR link
+  app.get("/api/buildings/:id/hall-qr/svg", async (req, res) => {
+    try {
+      const ctx = getActingContext(req);
+      const buildingId = Number(req.params.id);
+      if (!Number.isFinite(buildingId) || buildingId <= 0) {
+        return res.status(400).json({ error: "Immeuble invalide." });
+      }
+      if (!["admin", "syndic"].includes(ctx.role)) {
+        return res.status(403).json({ error: "Acces refuse." });
+      }
+      const link = await getHallQrLinkForBuilding(buildingId);
+      if (!link?.token) {
+        return res.status(404).json({ error: "Aucun lien QR Hall pour cette ACP." });
+      }
+      const appBaseUrl = resolveAppBaseUrl(req);
+      const qrUrl = `${appBaseUrl}/order/${link.token}`;
+      const building = await getSupabaseBuilding(buildingId);
+
+      const svgString = await QRCode.toString(qrUrl, {
+        type: "svg",
+        errorCorrectionLevel: "H",
+        margin: 2,
+        width: 1000,
+      });
+
+      // Return JSON with SVG string + metadata (for frontend to display/download)
+      res.json({
+        svg: svgString,
+        url: qrUrl,
+        building_name: building?.name || `Immeuble #${buildingId}`,
+        building_address: building?.address || "",
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error?.message || "Erreur generation QR." });
     }
   });
 

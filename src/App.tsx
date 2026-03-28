@@ -140,10 +140,10 @@ const SyndicGate = () => {
 };
 
 const PlaceurGate = () => {
-  const { user, token } = useAuth();
+  const { user, token, logout } = useAuth();
   if (!user) return <Navigate to="/syndic/login" replace />;
   if (user.role !== 'placeur') return <Navigate to={getPostLoginPath(user.role)} replace />;
-  return <PlaceurDashboard user={user} authToken={token} />;
+  return <PlaceurDashboard user={user} authToken={token} onLogout={logout} />;
 };
 
 const AdminLoginRoute = () => {

@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { BuildingAccessPicker } from '../../components/admin/BuildingAccessPicker';
+import { StatsPanel } from '../../components/admin/StatsPanel';
+import { BugTicketsPanel } from '../../components/admin/BugTicketsPanel';
+import { BugReportButton } from '../../components/BugReportButton';
 import {
   AlertCircle,
   ArrowRight,
@@ -10,6 +13,7 @@ import {
   Check,
   ChevronRight,
   Copy,
+  Download,
   Edit,
   ExternalLink,
   FileText,
@@ -32,6 +36,10 @@ import {
   Users as UsersIcon,
   Wrench,
   X,
+  BarChart3,
+  Bug,
+  MapPin,
+  MessageSquare,
 } from 'lucide-react';
 import {
   ENABLE_NEW_SYNDIC_DASHBOARD,
@@ -115,10 +123,11 @@ const dedupeById = <T extends { id?: number | string }>(items: T[]) => {
   });
 };
 
-type DashboardView = 'overview' | 'buildings' | 'orders' | 'hallqr' | 'users' | 'notifications' | 'profile' | 'team' | 'installers';
+type DashboardView = 'overview' | 'buildings' | 'orders' | 'hallqr' | 'users' | 'notifications' | 'profile' | 'team' | 'installers' | 'stats' | 'bugs';
 
-const DASHBOARD_SECTIONS: DashboardView[] = ['overview', 'buildings', 'orders', 'hallqr', 'users', 'notifications', 'profile', 'team', 'installers'];
+const DASHBOARD_SECTIONS: DashboardView[] = ['overview', 'buildings', 'orders', 'hallqr', 'users', 'notifications', 'profile', 'team', 'installers', 'stats', 'bugs'];
 const ACP_PAGE_SIZE = 6;
+const LIST_PAGE_SIZE = 10;
 
 const readDashboardSectionFromUrl = (): DashboardView => {
   if (typeof window === 'undefined') return 'overview';
@@ -176,6 +185,7 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
   const [isMutatingHallQrOrderId, setIsMutatingHallQrOrderId] = useState<number | null>(null);
   const [isRequestingHallQrBuildingId, setIsRequestingHallQrBuildingId] = useState<number | null>(null);
   const [isLoadingHallQrLinkBuildingId, setIsLoadingHallQrLinkBuildingId] = useState<number | null>(null);
+  const [qrSvgModal, setQrSvgModal] = useState<{ svg: string; url: string; building_name: string; building_address: string } | null>(null);
   const [isForcingTransferBuildingId, setIsForcingTransferBuildingId] = useState<number | null>(null);
   const [isForceTransferModalOpen, setIsForceTransferModalOpen] = useState(false);
   const [forceTransferTargetBuilding, setForceTransferTargetBuilding] = useState<any | null>(null);
@@ -184,6 +194,9 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
   const [forceTransferReason, setForceTransferReason] = useState('urgence_mandat');
   const [isLoadingSyndicCandidates, setIsLoadingSyndicCandidates] = useState(false);
   const [buildingPage, setBuildingPage] = useState(1);
+  const [orderPage, setOrderPage] = useState(1);
+  const [userPage, setUserPage] = useState(1);
+  const [notificationPage, setNotificationPage] = useState(1);
   const [selectedHallQrBuildingId, setSelectedHallQrBuildingId] = useState<number | null>(null);
   const apiFetch = React.useCallback((input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers || {});
@@ -191,6 +204,9 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
     return globalThis.fetch(input, { ...init, headers });
   }, [authToken]);
   const fetch = apiFetch;
+
+  useEffect(() => { setOrderPage(1); }, [orderTab, adminOrderFilter]);
+  useEffect(() => { setNotificationPage(1); }, [notificationCategoryFilter]);
 
   useEffect(() => {
     if (view === 'overview') {
@@ -507,49 +523,75 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
 
     setIsLoadingHallQrLinkBuildingId(buildingId);
     try {
+      // First check if QR link exists
       const res = await fetch(`/api/buildings/${buildingId}/hall-qr`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || "Impossible de charger le lien QR Hall.");
       }
 
-      const qrUrl = String(data?.qr_url || '').trim();
-      if (qrUrl) {
-        try {
-          await navigator.clipboard.writeText(qrUrl);
-          alert(`Lien QR Hall copie.\n${qrUrl}`);
-        } catch {
-          alert(`Lien QR Hall:\n${qrUrl}`);
+      let qrUrl = String(data?.qr_url || '').trim();
+
+      // If no QR link exists, create one first
+      if (!qrUrl) {
+        const shouldCreate = window.confirm(
+          "Aucun lien QR Hall n'existe pour cette ACP. Voulez-vous le generer maintenant ?"
+        );
+        if (!shouldCreate) return;
+
+        const createRes = await fetch(`/api/buildings/${buildingId}/hall-qr/link`, {
+          method: 'POST',
+        });
+        const createData = await createRes.json().catch(() => ({}));
+        if (!createRes.ok || !createData.success) {
+          throw new Error(createData.error || "Impossible de generer le lien QR Hall.");
         }
-        return;
+        qrUrl = String(createData?.qr_url || '').trim();
+        if (!qrUrl) {
+          throw new Error("Lien QR Hall indisponible apres generation.");
+        }
       }
 
-      const shouldCreate = window.confirm(
-        "Aucun lien QR Hall n'existe pour cette ACP. Voulez-vous le generer maintenant ?"
-      );
-      if (!shouldCreate) return;
+      // Now fetch the SVG version
+      const svgRes = await fetch(`/api/buildings/${buildingId}/hall-qr/svg`);
+      const svgData = await svgRes.json().catch(() => ({}));
+      if (!svgRes.ok || !svgData.svg) {
+        throw new Error(svgData.error || "Impossible de generer le QR code SVG.");
+      }
 
-      const createRes = await fetch(`/api/buildings/${buildingId}/hall-qr/link`, {
-        method: 'POST',
+      setQrSvgModal({
+        svg: svgData.svg,
+        url: svgData.url || qrUrl,
+        building_name: svgData.building_name || building.name || '',
+        building_address: svgData.building_address || building.address || '',
       });
-      const createData = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || !createData.success) {
-        throw new Error(createData.error || "Impossible de generer le lien QR Hall.");
-      }
-      const createdUrl = String(createData?.qr_url || '').trim();
-      if (!createdUrl) {
-        throw new Error("Lien QR Hall indisponible apres generation.");
-      }
-      try {
-        await navigator.clipboard.writeText(createdUrl);
-        alert(`Lien QR Hall genere et copie.\n${createdUrl}`);
-      } catch {
-        alert(`Lien QR Hall genere.\n${createdUrl}`);
-      }
     } catch (error: any) {
       alert(error.message || "Impossible de gerer le lien QR Hall.");
     } finally {
       setIsLoadingHallQrLinkBuildingId(null);
+    }
+  };
+
+  const downloadQrSvg = () => {
+    if (!qrSvgModal) return;
+    const blob = new Blob([qrSvgModal.svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `qr-hall-${qrSvgModal.building_name.replace(/[^a-zA-Z0-9]/g, '_') || 'building'}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const copyQrUrl = async () => {
+    if (!qrSvgModal) return;
+    try {
+      await navigator.clipboard.writeText(qrSvgModal.url);
+      alert('Lien copie !');
+    } catch {
+      alert(`Lien : ${qrSvgModal.url}`);
     }
   };
 
@@ -732,6 +774,30 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
   const filteredNotifications = notifications.filter((notification) =>
     notificationCategoryFilter === 'all' || getNotificationCategory(notification) === notificationCategoryFilter
   );
+
+  // Pagination helpers
+  const paginate = <T,>(items: T[], page: number, pageSize = LIST_PAGE_SIZE) => {
+    const total = Math.max(1, Math.ceil(items.length / pageSize));
+    const clamped = Math.min(Math.max(1, page), total);
+    return { items: items.slice((clamped - 1) * pageSize, clamped * pageSize), page: clamped, total, count: items.length };
+  };
+
+  const usersPag = paginate(users as any[], userPage);
+  const notifPag = paginate(filteredNotifications as any[], notificationPage);
+
+  const PaginationControls = ({ pag, setPage, label }: { pag: { page: number; total: number; count: number }; setPage: (fn: (p: number) => number) => void; label: string }) =>
+    pag.total > 1 ? (
+      <div className="mt-6 md:mt-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="text-xs text-zinc-500">
+          Page <span className="font-bold text-zinc-800">{pag.page}</span> / {pag.total}
+          <span className="ml-2">({pag.count} {label})</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={pag.page <= 1} className="px-4 py-2 rounded-xl border border-black/10 text-[10px] font-bold uppercase tracking-widest text-zinc-600 hover:bg-zinc-50 transition-all disabled:opacity-50">Precedent</button>
+          <button onClick={() => setPage((p) => Math.min(pag.total, p + 1))} disabled={pag.page >= pag.total} className="px-4 py-2 rounded-xl border border-black/10 text-[10px] font-bold uppercase tracking-widest text-zinc-600 hover:bg-zinc-50 transition-all disabled:opacity-50">Suivant</button>
+        </div>
+      </div>
+    ) : null;
   const actingOrganizationUserId = Number(user?.parent_id || user?.id || 0);
   const transferStatusClassMap: Record<string, string> = {
     pending: 'bg-amber-100 text-amber-700',
@@ -1237,6 +1303,8 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
     if (adminOrderFilter === 'done') return isOrderStatus(order.status, 'facturee') || isOrderStatus(order.status, 'annulee');
     return true;
   });
+  const ordersSource = user.role === 'admin' ? adminFilteredOrders : filteredOrders;
+  const ordersPag = paginate(ordersSource as any[], orderPage);
   const selectedOrderParsedDetails = selectedOrderDetail ? parseOrderDetails(selectedOrderDetail.details) : { items: [], meta: {}, rawText: '' };
   const selectedOrderLinkedBuilding = selectedOrderDetail
     ? buildings.find((b: any) =>
@@ -1385,7 +1453,25 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
             )}
           </button>
 
-          <button 
+          {user.role === 'admin' && (
+            <button
+              onClick={() => setView('stats')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${view === 'stats' ? 'bg-black text-white' : 'text-zinc-400 hover:bg-zinc-50'}`}
+            >
+              <BarChart3 size={16} /> Statistiques
+            </button>
+          )}
+
+          {user.role === 'admin' && (
+            <button
+              onClick={() => setView('bugs')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${view === 'bugs' ? 'bg-black text-white' : 'text-zinc-400 hover:bg-zinc-50'}`}
+            >
+              <Bug size={16} /> Tickets
+            </button>
+          )}
+
+          <button
             onClick={() => setView('profile')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${view === 'profile' ? 'bg-black text-white' : 'text-zinc-400 hover:bg-zinc-50'}`}
           >
@@ -2423,11 +2509,12 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
         )}
 
         {view === 'buildings' && subView === 'detail' && (
-          <BuildingDetail 
-            building={selectedBuilding} 
+          <BuildingDetail
+            building={selectedBuilding}
             user={user}
             initialIsOrdering={openOrderOnBuildingLoad}
-            onBack={() => setSubView('list')} 
+            apiFetch={fetch}
+            onBack={() => setSubView('list')}
             onRefresh={() => handleSelectBuilding(selectedBuilding.id)}
             onEditBuilding={() => {
               setNewBuilding({
@@ -2528,7 +2615,7 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
                         ? 'Selectionner une ACP'
                         : isLoadingHallQrLinkBuildingId === Number(selectedHallQrBuilding.id)
                           ? 'Generation...'
-                          : 'Generer ou copier le lien QR'}
+                          : 'Voir / Telecharger QR Code SVG'}
                     </button>
                     <p className="text-xs text-zinc-500 mt-3">
                       Ce lien est celui a imprimer et poser dans le hall.
@@ -2746,8 +2833,8 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
 
             <div className="grid gap-8">
               {(() => {
-                const ordersToRender = user.role === 'admin' ? adminFilteredOrders : filteredOrders;
-                if (ordersToRender.length === 0) {
+                const ordersToRender = ordersPag.items;
+                if (ordersSource.length === 0) {
                   return (
                     <div className="bg-white border border-dashed border-black/10 rounded-[24px] md:rounded-[32px] p-8 md:p-12 text-center">
                       <div className="w-14 h-14 mx-auto mb-5 bg-zinc-50 rounded-2xl flex items-center justify-center text-zinc-400">
@@ -2900,12 +2987,13 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
                 });
               })()}
             </div>
+            <PaginationControls pag={ordersPag} setPage={setOrderPage} label="commandes" />
           </div>
         )}
 
         {selectedOrderDetail && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 md:p-6">
-            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-10 w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 md:p-6" onClick={() => setSelectedOrderDetail(null)}>
+            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-10 w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-start gap-4 mb-6">
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-2">
@@ -3127,7 +3215,15 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="relative">
                       {selectedOrderDetail.photo_before ? (
-                        <img src={selectedOrderDetail.photo_before} alt="Avant" className="w-full h-32 md:h-40 object-cover rounded-xl" />
+                        <div>
+                          <img src={selectedOrderDetail.photo_before} alt="Avant" className="w-full h-32 md:h-40 object-cover rounded-xl" />
+                          {selectedOrderDetail.photo_before_geo && (
+                            <div className="flex items-center gap-1 mt-1 text-[10px] text-zinc-400">
+                              <MapPin size={10} />
+                              <span>{Number(selectedOrderDetail.photo_before_geo.lat).toFixed(5)}, {Number(selectedOrderDetail.photo_before_geo.lng).toFixed(5)}</span>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <label className="w-full h-32 md:h-40 border-2 border-dashed border-black/10 rounded-xl flex flex-col items-center justify-center bg-zinc-50 cursor-pointer hover:bg-white transition-colors">
                           <Camera size={20} className="text-zinc-400 mb-2" />
@@ -3157,7 +3253,15 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
                     </div>
                     <div className="relative">
                       {selectedOrderDetail.photo_after ? (
-                        <img src={selectedOrderDetail.photo_after} alt="Apres" className="w-full h-32 md:h-40 object-cover rounded-xl" />
+                        <div>
+                          <img src={selectedOrderDetail.photo_after} alt="Apres" className="w-full h-32 md:h-40 object-cover rounded-xl" />
+                          {selectedOrderDetail.photo_after_geo && (
+                            <div className="flex items-center gap-1 mt-1 text-[10px] text-zinc-400">
+                              <MapPin size={10} />
+                              <span>{Number(selectedOrderDetail.photo_after_geo.lat).toFixed(5)}, {Number(selectedOrderDetail.photo_after_geo.lng).toFixed(5)}</span>
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <label className="w-full h-32 md:h-40 border-2 border-dashed border-black/10 rounded-xl flex flex-col items-center justify-center bg-zinc-50 cursor-pointer hover:bg-white transition-colors">
                           <Camera size={20} className="text-zinc-400 mb-2" />
@@ -3283,7 +3387,7 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
               </button>
             </div>
             <div className="grid gap-4">
-              {users.map((u) => (
+              {usersPag.items.map((u) => (
                 <div key={u.id} className="bg-white p-6 md:p-8 rounded-[24px] md:rounded-[32px] border border-black/5 flex flex-col gap-4 md:gap-6">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4 md:gap-6">
@@ -3347,6 +3451,7 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
                 </div>
               ))}
             </div>
+            <PaginationControls pag={usersPag} setPage={setUserPage} label="syndics" />
           </div>
         )}
 
@@ -3529,7 +3634,7 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
             </div>
 
             <div className="grid gap-4">
-              {filteredNotifications.map((n) => {
+              {notifPag.items.map((n) => {
                 const isWelcome = n.type === 'welcome';
                 const isOrder = n.type === 'order';
                 const isContact = n.type === 'contact';
@@ -3644,13 +3749,14 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
                 </div>
               )}
             </div>
+            <PaginationControls pag={notifPag} setPage={setNotificationPage} label="notifications" />
           </div>
         )}
 
         {/* Add Building Modal */}
         {isAdding && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
-            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6" onClick={() => setIsAdding(false)}>
+            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-6 md:mb-10">
                 <h2 className="text-xl md:text-2xl font-bold tracking-tight uppercase">
                   {(selectedBuilding && view === 'buildings' && subView === 'detail') ? "Modifier l'immeuble" : "Ajouter un immeuble"}
@@ -3784,8 +3890,8 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
 
         {/* Add User Modal */}
         {isAddingTeamMember && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
-            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6" onClick={() => setIsAddingTeamMember(false)}>
+            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-6 md:mb-10">
                 <h2 className="text-xl md:text-2xl font-bold tracking-tight uppercase">Nouveau Collaborateur</h2>
                 <button onClick={() => setIsAddingTeamMember(false)} className="text-zinc-400 hover:text-black"><X size={24} /></button>
@@ -3875,8 +3981,8 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
         )}
 
         {isAddingAdminTeamMember && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
-            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6" onClick={() => setIsAddingAdminTeamMember(false)}>
+            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-6 md:mb-10">
                 <h2 className="text-xl md:text-2xl font-bold tracking-tight uppercase">Nouveau placeur</h2>
                 <button onClick={() => setIsAddingAdminTeamMember(false)} className="text-zinc-400 hover:text-black"><X size={24} /></button>
@@ -3966,8 +4072,8 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
         )}
 
         {isAddingUser && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
-            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6" onClick={() => setIsAddingUser(false)}>
+            <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
               <div className="flex justify-between items-center mb-6 md:mb-10">
                 <h2 className="text-xl md:text-2xl font-bold tracking-tight uppercase">Nouveau Compte Syndic</h2>
                 <button onClick={() => setIsAddingUser(false)} className="text-zinc-400 hover:text-black"><X size={24} /></button>
@@ -4163,7 +4269,72 @@ const AdminDashboard = ({ user, authToken, onLogout }: { user: any, authToken?: 
             </div>
           </div>
         )}
+        {view === 'stats' && user.role === 'admin' && (
+          <StatsPanel apiFetch={apiFetch} user={user} />
+        )}
+
+        {view === 'bugs' && user.role === 'admin' && (
+          <BugTicketsPanel apiFetch={apiFetch} user={user} />
+        )}
       </main>
+
+      {/* QR SVG Modal */}
+      {qrSvgModal && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={() => setQrSvgModal(null)}>
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="p-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-black/5 rounded-xl flex items-center justify-center">
+                    <QrCode size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold">QR Code Hall</h3>
+                    <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">SVG haute qualite</p>
+                  </div>
+                </div>
+                <button onClick={() => setQrSvgModal(null)} className="p-2 rounded-xl hover:bg-zinc-100"><X size={18} /></button>
+              </div>
+
+              <div className="text-center space-y-1">
+                <div className="font-semibold text-sm">{qrSvgModal.building_name}</div>
+                {qrSvgModal.building_address && <div className="text-xs text-zinc-500">{qrSvgModal.building_address}</div>}
+              </div>
+
+              <div className="flex justify-center bg-zinc-50 rounded-xl p-6">
+                <div
+                  className="w-64 h-64 [&>svg]:w-full [&>svg]:h-full"
+                  dangerouslySetInnerHTML={{ __html: qrSvgModal.svg }}
+                />
+              </div>
+
+              <div className="text-xs text-zinc-400 text-center break-all px-4">{qrSvgModal.url}</div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={downloadQrSvg}
+                  className="flex-1 bg-black text-white py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all flex items-center justify-center gap-2"
+                >
+                  <Download size={14} /> Telecharger SVG
+                </button>
+                <button
+                  onClick={copyQrUrl}
+                  className="flex-1 border border-black/10 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-zinc-50 transition-all flex items-center justify-center gap-2"
+                >
+                  <Copy size={14} /> Copier le lien
+                </button>
+              </div>
+
+              <p className="text-[10px] text-zinc-400 text-center">
+                Format SVG vectoriel — qualite parfaite pour impression sur plaque, quelle que soit la taille.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bug report floating button */}
+      <BugReportButton apiFetch={apiFetch} user={user} />
     </div>
   );
 };
@@ -4330,7 +4501,8 @@ const SIGNAGE_CATEGORY_LABELS: Record<string, string> = {
   directory: 'Tableau indicateur',
 };
 
-const BuildingDetail = ({ building, user, initialIsOrdering = false, onBack, onRefresh, onEditBuilding }: { building: any, user: any, initialIsOrdering?: boolean, onBack: () => void, onRefresh: () => void, onEditBuilding: () => void }) => {
+const BuildingDetail = ({ building, user, initialIsOrdering = false, apiFetch, onBack, onRefresh, onEditBuilding }: { building: any, user: any, initialIsOrdering?: boolean, apiFetch?: typeof globalThis.fetch, onBack: () => void, onRefresh: () => void, onEditBuilding: () => void }) => {
+  const fetch = apiFetch || globalThis.fetch;
   type BuildingOwner = {
     owner_id: number;
     name: string;
@@ -4717,8 +4889,8 @@ const BuildingDetail = ({ building, user, initialIsOrdering = false, onBack, onR
       </div>
 
       {isSharingLink && orderToken && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[32px] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setIsSharingLink(false)}>
+          <div className="bg-white rounded-[32px] p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold tracking-tight">Partager le lien</h3>
               <button onClick={() => setIsSharingLink(false)} className="p-2 hover:bg-zinc-100 rounded-full transition-colors">
@@ -5036,8 +5208,8 @@ const BuildingDetail = ({ building, user, initialIsOrdering = false, onBack, onR
 
       {/* Add Signage Modal */}
       {isAddingSignage && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
-          <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6" onClick={() => { setIsAddingSignage(false); setEditingSignageId(null); }}>
+          <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6 md:mb-10">
               <h2 className="text-xl md:text-2xl font-bold tracking-tight uppercase">{editingSignageId ? "Modifier l'Element technique" : "Ajouter un Element technique"}</h2>
               <button onClick={() => { setIsAddingSignage(false); setEditingSignageId(null); }} className="text-zinc-400 hover:text-black"><X size={24} /></button>
@@ -5330,8 +5502,8 @@ const BuildingDetail = ({ building, user, initialIsOrdering = false, onBack, onR
 
       {/* Order Modal */}
       {isOrdering && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6">
-          <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6" onClick={() => { setIsOrdering(false); setOrderRequesterQuality('owner'); setOwnerContact({ name: '', email: '' }); setOwnerReference(''); setSelectedOwnerId(''); }}>
+          <div className="bg-white rounded-[24px] md:rounded-[40px] p-6 md:p-12 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-6 md:mb-10">
               <h2 className="text-xl md:text-2xl font-bold tracking-tight uppercase">Nouvelle Commande</h2>
               <button
