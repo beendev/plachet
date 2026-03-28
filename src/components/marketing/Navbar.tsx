@@ -41,7 +41,7 @@ export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeC
           {navLinks.map((link) => (
             <button key={link.name} onClick={link.onClick} className="hover:text-emerald-600 transition-colors uppercase tracking-widest">{link.name}</button>
           ))}
-          <button onClick={onPortalClick} className="hover:text-emerald-600 transition-colors">Acces Syndic</button>
+          <button onClick={onPortalClick} className="hover:text-emerald-600 transition-colors">Accès Syndic</button>
         </div>
 
         <div className="flex items-center gap-4">
@@ -68,7 +68,7 @@ export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeC
             </button>
           ))}
           <button onClick={() => { setIsMenuOpen(false); onPortalClick?.(); }} className="block text-xs font-bold uppercase tracking-widest border-b border-zinc-50 pb-4 w-full text-left text-emerald-600">
-            Acces Syndic
+            Accès Syndic
           </button>
           <button onClick={() => { setIsMenuOpen(false); onRegisterClick?.(); }} className="w-full bg-black text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest">
             Devenir Partenaire

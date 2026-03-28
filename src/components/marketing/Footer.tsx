@@ -20,9 +20,9 @@ export const Footer = ({ onPortalClick }: { onPortalClick: () => void }) => {
                 <span className="text-white font-bold text-2xl">P</span>
               </div>
               <div className="flex-1 text-center md:text-left">
-                <h3 className="text-lg md:text-xl font-bold mb-1">Telecharger l'application Plachet</h3>
+                <h3 className="text-lg md:text-xl font-bold mb-1">Télécharger l'application Plachet</h3>
                 <p className="text-sm text-zinc-500">
-                  Installez Plachet sur votre telephone pour un acces rapide, meme hors connexion.
+                  Installez Plachet sur votre téléphone pour un accès rapide, même hors connexion.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -65,12 +65,12 @@ export const Footer = ({ onPortalClick }: { onPortalClick: () => void }) => {
                 <div className="text-xs font-bold uppercase tracking-widest text-emerald-600">iPhone / iPad</div>
                 <div className="space-y-3">
                   <Step n={1} text="Ouvrez cette page dans Safari" />
-                  <Step n={2} text={<>Appuyez sur l'icone <strong>Partager</strong> <ShareIcon /> en bas de l'ecran</>} />
-                  <Step n={3} text={<>Faites defiler et appuyez sur <strong>« Sur l'ecran d'accueil »</strong></>} />
+                  <Step n={2} text={<>Appuyez sur l'icône <strong>Partager</strong> <ShareIcon /> en bas de l'écran</>} />
+                  <Step n={3} text={<>Faites défiler et appuyez sur <strong>« Sur l'écran d'accueil »</strong></>} />
                   <Step n={4} text={<>Appuyez <strong>« Ajouter »</strong></>} />
                 </div>
                 <div className="bg-zinc-50 rounded-xl p-3 text-xs text-zinc-500">
-                  L'app Plachet apparaitra sur votre ecran d'accueil comme une application native.
+                  L'app Plachet apparaîtra sur votre écran d'accueil comme une application native.
                 </div>
               </div>
             ) : isAndroid ? (
@@ -78,12 +78,12 @@ export const Footer = ({ onPortalClick }: { onPortalClick: () => void }) => {
                 <div className="text-xs font-bold uppercase tracking-widest text-emerald-600">Android</div>
                 <div className="space-y-3">
                   <Step n={1} text="Ouvrez cette page dans Chrome" />
-                  <Step n={2} text={<>Appuyez sur les <strong>3 points</strong> en haut a droite</>} />
-                  <Step n={3} text={<>Appuyez sur <strong>« Installer l'application »</strong> ou <strong>« Ajouter a l'ecran d'accueil »</strong></>} />
+                  <Step n={2} text={<>Appuyez sur les <strong>3 points</strong> en haut à droite</>} />
+                  <Step n={3} text={<>Appuyez sur <strong>« Installer l'application »</strong> ou <strong>« Ajouter à l'écran d'accueil »</strong></>} />
                   <Step n={4} text={<>Confirmez en appuyant <strong>« Installer »</strong></>} />
                 </div>
                 <div className="bg-zinc-50 rounded-xl p-3 text-xs text-zinc-500">
-                  L'app Plachet se lancera en plein ecran, sans barre d'adresse.
+                  L'app Plachet se lancera en plein écran, sans barre d'adresse.
                 </div>
               </div>
             ) : (
@@ -91,7 +91,7 @@ export const Footer = ({ onPortalClick }: { onPortalClick: () => void }) => {
                 <div className="text-xs font-bold uppercase tracking-widest text-emerald-600">Ordinateur / Navigateur</div>
                 <div className="space-y-3">
                   <Step n={1} text="Ouvrez cette page dans Chrome, Edge ou Safari" />
-                  <Step n={2} text={<>Cherchez l'icone <strong>d'installation</strong> dans la barre d'adresse</>} />
+                  <Step n={2} text={<>Cherchez l'icône <strong>d'installation</strong> dans la barre d'adresse</>} />
                   <Step n={3} text={<>Cliquez sur <strong>« Installer »</strong></>} />
                 </div>
               </div>
@@ -114,13 +114,13 @@ export const Footer = ({ onPortalClick }: { onPortalClick: () => void }) => {
             </div>
 
             <div className="text-[9px] md:text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-400 order-3 md:order-2">
-              (c) {new Date().getFullYear()} Plachet Bruxelles - Expertise Signaletique
+              © {new Date().getFullYear()} Plachet Bruxelles — Expertise Signalétique
             </div>
 
             <div className="flex flex-wrap justify-center gap-6 md:gap-8 text-[9px] md:text-[10px] font-bold uppercase tracking-widest order-2 md:order-3">
-              <button onClick={onPortalClick} className="hover:text-emerald-600 transition-colors">Acces Syndic</button>
-              <a href="/mentions-legales" className="hover:text-emerald-600 transition-colors">Mentions legales</a>
-              <a href="/confidentialite" className="hover:text-emerald-600 transition-colors">Confidentialite</a>
+              <button onClick={onPortalClick} className="hover:text-emerald-600 transition-colors">Accès Syndic</button>
+              <a href="/mentions-legales" className="hover:text-emerald-600 transition-colors">Mentions légales</a>
+              <a href="/confidentialite" className="hover:text-emerald-600 transition-colors">Confidentialité</a>
             </div>
           </div>
         </div>

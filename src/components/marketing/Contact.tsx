@@ -79,7 +79,7 @@ export const Contact = () => {
                     className="mt-0.5"
                   />
                   <span className="text-[11px] text-zinc-600 leading-relaxed">
-                    J&apos;accepte que mes donnees soient utilisees pour etre recontacte par Plachet, conformement a la politique de confidentialite.
+                    J&apos;accepte que mes données soient utilisées pour être recontacté par Plachet, conformément à la politique de confidentialité.
                   </span>
                 </label>
                 <button disabled={status === 'loading' || !form.consent} className="w-full bg-black text-white py-4 md:py-5 rounded-xl md:rounded-2xl font-bold uppercase tracking-widest text-xs hover:bg-zinc-800 transition-all disabled:opacity-50">
