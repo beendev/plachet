@@ -1,10 +1,16 @@
 import React, { useEffect, useState } from 'react';
+import { LogIn } from 'lucide-react';
 
 type NavbarProps = {
   onPortalClick?: () => void;
   onRegisterClick?: () => void;
   onCachetsClick?: () => void;
   onHomeClick?: () => void;
+};
+
+const scrollTo = (id: string) => {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
 export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeClick }: NavbarProps) => {
@@ -18,10 +24,10 @@ export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeC
   }, []);
 
   const navLinks = [
-    { name: 'Services', onClick: onHomeClick },
-    { name: 'Méthode', onClick: onHomeClick },
+    { name: 'Services', onClick: () => scrollTo('process') },
+    { name: 'Méthode', onClick: () => scrollTo('syndic') },
     { name: 'Cachets', onClick: onCachetsClick },
-    { name: 'Contact', onClick: onHomeClick },
+    { name: 'Contact', onClick: () => scrollTo('contact') },
   ];
 
   return (
@@ -41,11 +47,17 @@ export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeC
           {navLinks.map((link) => (
             <button key={link.name} onClick={link.onClick} className="hover:text-emerald-600 transition-colors uppercase tracking-widest">{link.name}</button>
           ))}
-          <button onClick={onPortalClick} className="hover:text-emerald-600 transition-colors">Accès Syndic</button>
         </div>
 
-        <div className="flex items-center gap-4">
-          <button onClick={onRegisterClick} className="hidden sm:block border border-black px-6 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-all">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onPortalClick}
+            className="hidden sm:flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 active:scale-95 transition-all"
+          >
+            <LogIn size={14} />
+            Connexion Syndic
+          </button>
+          <button onClick={onRegisterClick} className="hidden sm:block border border-black px-6 py-2.5 rounded-full text-[10px] font-bold uppercase tracking-widest hover:bg-black hover:text-white transition-all">
             Devenir Partenaire
           </button>
           <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="md:hidden w-10 h-10 flex flex-col items-center justify-center gap-1.5">
@@ -67,8 +79,12 @@ export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeC
               {link.name}
             </button>
           ))}
-          <button onClick={() => { setIsMenuOpen(false); onPortalClick?.(); }} className="block text-xs font-bold uppercase tracking-widest border-b border-zinc-50 pb-4 w-full text-left text-emerald-600">
-            Accès Syndic
+          <button
+            onClick={() => { setIsMenuOpen(false); onPortalClick?.(); }}
+            className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest"
+          >
+            <LogIn size={16} />
+            Connexion Syndic
           </button>
           <button onClick={() => { setIsMenuOpen(false); onRegisterClick?.(); }} className="w-full bg-black text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest">
             Devenir Partenaire
@@ -78,4 +94,3 @@ export const Navbar = ({ onPortalClick, onRegisterClick, onCachetsClick, onHomeC
     </nav>
   );
 };
-

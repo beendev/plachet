@@ -117,10 +117,12 @@ export const Footer = ({ onPortalClick }: { onPortalClick: () => void }) => {
               © {new Date().getFullYear()} Plachet Bruxelles — Expertise Signalétique
             </div>
 
-            <div className="flex flex-wrap justify-center gap-6 md:gap-8 text-[9px] md:text-[10px] font-bold uppercase tracking-widest order-2 md:order-3">
-              <button onClick={onPortalClick} className="hover:text-emerald-600 transition-colors">Accès Syndic</button>
-              <a href="/mentions-legales" className="hover:text-emerald-600 transition-colors">Mentions légales</a>
-              <a href="/confidentialite" className="hover:text-emerald-600 transition-colors">Confidentialité</a>
+            <div className="flex flex-wrap justify-center items-center gap-4 md:gap-6 order-2 md:order-3">
+              <button onClick={onPortalClick} className="flex items-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-full text-[9px] md:text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 active:scale-95 transition-all">
+                Connexion Syndic
+              </button>
+              <a href="/mentions-legales" className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-black underline underline-offset-4 decoration-zinc-300 hover:decoration-black transition-colors">Mentions légales</a>
+              <a href="/confidentialite" className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-black underline underline-offset-4 decoration-zinc-300 hover:decoration-black transition-colors">Confidentialité</a>
             </div>
           </div>
         </div>
