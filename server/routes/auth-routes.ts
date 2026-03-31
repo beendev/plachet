@@ -205,9 +205,9 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
       email,
       password,
       confirm_password,
-      name,
       first_name,
       last_name,
+      name,
       company_name,
       phone,
       street,
@@ -216,10 +216,10 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
       zip,
       city,
       vat_number,
-      bce_number,
       ipi_number,
-      is_ipi_certified,
+      is_vat_liable,
       accept_legal,
+      role: requestedRole,
     } = req.body;
     const env = getServerEnv();
     const normalizedEmail = normalizeEmail(email);
@@ -238,46 +238,53 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
     if (isDisposableEmailDomain(normalizedEmail, env.blockedEmailDomains)) {
       return res.status(400).json({ error: "Les adresses email jetables ne sont pas autorisees." });
     }
-    const address = `${street} ${number}${box ? ` bte ${box}` : ""}, ${zip} ${city}`;
+
+    const role = requestedRole === "placeur" ? "placeur" : "syndic";
+    const address = street && number && zip && city
+      ? `${street} ${number}${box ? ` bte ${box}` : ""}, ${zip} ${city}`
+      : null;
 
     try {
       const hashedPassword = bcrypt.hashSync(password, 10);
       const verificationToken = crypto.randomBytes(32).toString("hex");
-      const user = await createSupabaseUser({
+
+      const userData: Record<string, any> = {
         email: normalizedEmail,
         password: hashedPassword,
-        name,
         first_name: first_name || null,
         last_name: last_name || null,
-        company_name,
-        phone,
+        name: name || null,
+        company_name: company_name || null,
+        phone: phone || null,
         address,
-        street,
-        number,
-        box,
-        zip,
-        city,
-        vat_number,
-        bce_number: bce_number || null,
+        street: street || null,
+        number: number || null,
+        box: box || null,
+        zip: zip || null,
+        city: city || null,
+        vat_number: vat_number || null,
         ipi_number: ipi_number || null,
-        is_ipi_certified: is_ipi_certified ? 1 : 0,
-        role: "syndic",
-        profile_completed: 1,
+        is_vat_liable: is_vat_liable != null ? (is_vat_liable ? 1 : 0) : null,
+        role,
+        profile_completed: role === "syndic" ? 1 : 0,
         email_verified: 0,
         verification_token: verificationToken,
-      });
+      };
 
-      await createSupabaseNotification({
-        type: "contact",
-        title: "Nouveau Syndic Inscrit",
-        message: `Le syndic ${name} (${company_name}) s'est inscrit sur la plateforme. En attente de vérification email.`,
-      });
+      const user = await createSupabaseUser(userData);
 
-      await createSupabaseNotification({
-        user_id: user.id,
-        type: "welcome",
-        title: "Bienvenue chez Plachet !",
-        message: `Bonjour ${name}, nous sommes ravis de vous compter parmi nos partenaires. 
+      if (role === "syndic") {
+        await createSupabaseNotification({
+          type: "contact",
+          title: "Nouveau Syndic Inscrit",
+          message: `Le syndic ${name} (${company_name || '-'}) s'est inscrit sur la plateforme. En attente de vérification email.`,
+        });
+
+        await createSupabaseNotification({
+          user_id: user.id,
+          type: "welcome",
+          title: "Bienvenue chez Plachet !",
+          message: `Bonjour ${name}, nous sommes ravis de vous compter parmi nos partenaires.
 
 Voici comment débuter :
 1. Ajoutez vos immeubles dans l'onglet "Immeubles".
@@ -285,31 +292,50 @@ Voici comment débuter :
 3. Suivez l'état de vos commandes en temps réel.
 
 Besoin d'aide ? Contactez-nous à info@plachet.be.`,
-      });
+        });
+      } else {
+        // Placeur self-registration — admin needs to approve
+        await createSupabaseNotification({
+          type: "contact",
+          title: "Nouvelle Demande Placeur",
+          message: `Un nouveau placeur (${normalizedEmail}) a demandé un accès à la plateforme. Vérifiez et activez son compte dans la gestion des utilisateurs.`,
+        });
+      }
 
       const verificationUrl = `${resolveAppBaseUrl(req)}/api/auth/verify?token=${verificationToken}`;
       try {
-        await resend.emails.send({
-          from: "Plachet <info@plachet.be>",
-          to: normalizedEmail,
-          subject: "Vérifiez votre adresse email - Plachet",
-          html: generateEmailTemplate(
-            "Bienvenue sur Plachet !",
-            `
+        const emailSubject = role === "syndic"
+          ? "Vérifiez votre adresse email - Plachet"
+          : "Demande d'accès placeur reçue - Plachet";
+        const emailBody = role === "syndic"
+          ? `
             <p style="margin-top: 0;">Bonjour <strong>${name}</strong>,</p>
             <p>Merci de vous être inscrit. Veuillez cliquer sur le bouton ci-dessous pour vérifier votre adresse email et activer votre compte :</p>
             <div style="text-align: center; margin: 30px 0;">
               <a href="${verificationUrl}" style="display: inline-block; padding: 14px 28px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Vérifier mon email</a>
             </div>
             <p style="margin-bottom: 0; font-size: 12px; color: #71717a; word-break: break-all;">Si le bouton ne fonctionne pas, copiez-collez ce lien dans votre navigateur :<br><br>${verificationUrl}</p>
-            `,
+            `
+          : `
+            <p style="margin-top: 0;">Bonjour,</p>
+            <p>Nous avons bien reçu votre demande pour devenir placeur chez Plachet.</p>
+            <p>Notre équipe examinera votre candidature et vous recevrez un email de confirmation une fois votre compte activé.</p>
+            <p style="margin-bottom: 0; font-size: 14px; color: #71717a;">Pour toute question, contactez-nous à info@plachet.be.</p>
+            `;
+        await resend.emails.send({
+          from: "Plachet <info@plachet.be>",
+          to: normalizedEmail,
+          subject: emailSubject,
+          html: generateEmailTemplate(
+            role === "syndic" ? "Bienvenue sur Plachet !" : "Demande reçue",
+            emailBody,
           ),
         });
       } catch (emailError) {
         console.error("Failed to send verification email:", emailError);
       }
 
-      res.json({ success: true, message: "Inscription réussie. Veuillez vérifier votre email." });
+      res.json({ success: true, message: role === "syndic" ? "Inscription réussie. Veuillez vérifier votre email." : "Demande envoyée." });
     } catch (e: any) {
       const message = String(e?.message || e);
       if (message.toLowerCase().includes("duplicate") || message.toLowerCase().includes("unique")) {

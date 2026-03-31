@@ -208,6 +208,7 @@ CREATE TABLE public.users (
   bce_number text,
   ipi_number text,
   is_ipi_certified boolean DEFAULT false,
+  is_vat_liable boolean DEFAULT true,
   deleted_at timestamp with time zone,
   has_full_building_access boolean DEFAULT false,
   CONSTRAINT users_pkey PRIMARY KEY (id),

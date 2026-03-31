@@ -67,7 +67,7 @@ export const AdminLogin = ({ onLogin, onRegisterClick, onForgotPasswordClick, on
             Se connecter
           </button>
           <div className="text-center pt-4">
-            <button onClick={onRegisterClick} className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-black transition-colors">
+            <button onClick={onRegisterClick} className="text-sm font-bold uppercase tracking-widest text-emerald-600 hover:text-emerald-700 transition-colors">
               Pas encore de compte ? S&apos;inscrire
             </button>
           </div>
