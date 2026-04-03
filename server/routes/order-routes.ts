@@ -68,6 +68,7 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
     updateBugReport,
     deleteBugReport,
     getStats,
+    getCompanyByUserId,
   } = pickDeps(deps);
     const isMissingOwnerReferenceColumnError = (error: any) => {
       const message = String(error?.message || error?.details || error || "").toLowerCase();
@@ -958,9 +959,10 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
       const userId = auth.userId;
       const orders = await listSupabaseOrders(role, userId);
       const issuer = userId ? await getSupabaseUserById(userId) : null;
+      const issuerCompany = userId ? await getCompanyByUserId(userId) : null;
       const pdfBuffer = buildPdfBuffer(orders, {
         issuerName: issuer?.name,
-        issuerCompany: issuer?.company_name,
+        issuerCompany: issuerCompany?.company_name || issuerCompany?.name,
         issuerEmail: issuer?.email,
         issuerPhone: issuer?.phone,
       });
@@ -987,9 +989,10 @@ export function registerSupabaseOrderRoutes(app: Express, deps: ServerRouteDeps)
         return !OWNER_APPROVAL_PENDING_STATUSES.has(status) && status !== "posée" && status !== "annulée";
       }).length;
       const issuer = auth.userId ? await getSupabaseUserById(Number(auth.userId)) : null;
+      const issuerCompany2 = auth.userId ? await getCompanyByUserId(Number(auth.userId)) : null;
       const pdfBase64 = buildPdfBuffer(orders, {
         issuerName: issuer?.name,
-        issuerCompany: issuer?.company_name,
+        issuerCompany: issuerCompany2?.company_name || issuerCompany2?.name,
         issuerEmail: issuer?.email,
         issuerPhone: issuer?.phone,
       }).toString("base64");

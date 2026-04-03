@@ -22,6 +22,9 @@ export function registerSupabaseUserRoutes(app: Express, deps: ServerRouteDeps) 
     resend,
     supabaseEmailExists,
     updateUser: updateSupabaseUser,
+    createCompany,
+    getCompanyByUserId,
+    updateCompany,
   } = pickDeps(deps);
   const getAuthUser = (req: any) => {
     const auth = req.authUser;
@@ -237,31 +240,47 @@ export function registerSupabaseUserRoutes(app: Express, deps: ServerRouteDeps) 
   });
 
   app.post("/api/users/update-profile", async (req, res) => {
-    const { id, company_name, phone, street, number, box, zip, city, vat_number, first_name, last_name, bce_number, ipi_number, is_ipi_certified } =
+    const { id, company_name, phone, street, number, box, zip, city, vat_number, first_name, last_name, bce_number, ipi_number, is_ipi_certified, is_vat_liable } =
       req.body;
     const auth = getAuthUser(req);
     if (!auth) return res.status(401).json({ error: "Authentification requise." });
     if (auth.role !== "admin" && Number(id) !== auth.userId) {
       return res.status(403).json({ error: "Acces refuse." });
     }
-    const address = `${street} ${number}${box ? ` bte ${box}` : ""}, ${zip} ${city}`;
+
+    // Update user (personal info)
     await updateSupabaseUser(id, {
       first_name: first_name || null,
       last_name: last_name || null,
-      company_name,
       phone,
-      address,
-      street,
-      number,
-      box,
-      zip,
-      city,
-      vat_number,
-      bce_number: bce_number || null,
-      ipi_number: ipi_number || null,
-      is_ipi_certified: is_ipi_certified ? 1 : 0,
       profile_completed: 1,
     });
+
+    // Update or create company (professional info)
+    const address = `${street} ${number}${box ? ` bte ${box}` : ""}, ${zip} ${city}`;
+    const companyData = {
+      company_name: company_name || null,
+      phone: phone || null,
+      address,
+      street: street || null,
+      number: number || null,
+      box: box || null,
+      zip: zip || null,
+      city: city || null,
+      vat_number: vat_number || null,
+      bce_number: bce_number || null,
+      ipi_number: ipi_number || null,
+      is_ipi_certified: is_ipi_certified ? true : false,
+      is_vat_liable: is_vat_liable != null ? Boolean(is_vat_liable) : true,
+    };
+
+    const existing = await getCompanyByUserId(id);
+    if (existing) {
+      await updateCompany(id, companyData);
+    } else {
+      await createCompany({ user_id: Number(id), ...companyData });
+    }
+
     res.json({ success: true });
   });
 
@@ -293,24 +312,20 @@ export function registerSupabaseUserRoutes(app: Express, deps: ServerRouteDeps) 
     const anonymizedPassword = bcrypt.hashSync(crypto.randomBytes(32).toString("hex"), 10);
 
     await replaceUserBuildings(user.id, []);
+    // Delete company data
+    await getCompanyByUserId(user.id).then((c: any) => c && updateCompany(user.id, {
+      company_name: null, phone: null, address: null, street: null, number: null,
+      box: null, zip: null, city: null, vat_number: null, bce_number: null,
+      ipi_number: null, is_ipi_certified: false,
+    })).catch(() => {});
+
     await updateSupabaseUser(user.id, {
       email: anonymizedEmail,
       password: anonymizedPassword,
       name: "Compte supprime",
       first_name: null,
       last_name: null,
-      company_name: null,
       phone: null,
-      address: null,
-      street: null,
-      number: null,
-      box: null,
-      zip: null,
-      city: null,
-      vat_number: null,
-      bce_number: null,
-      ipi_number: null,
-      is_ipi_certified: 0,
       profile_completed: 0,
       email_verified: 0,
       verification_token: null,

@@ -140,6 +140,10 @@ export type ServerRouteDeps = {
   updateBugReport: (id: number | string, payload: Record<string, unknown>) => Promise<any>;
   deleteBugReport: (id: number | string) => Promise<unknown>;
   getStats: () => Promise<{ orders: any[]; buildings: any[]; users: any[]; bugReports: any[] }>;
+  createCompany: (payload: Record<string, unknown>) => Promise<any>;
+  getCompanyByUserId: (userId: number | string) => Promise<any>;
+  updateCompany: (userId: number | string, payload: Record<string, unknown>) => Promise<any>;
+  deleteCompanyByUserId: (userId: number | string) => Promise<unknown>;
 };
 
 export const pickDeps = (deps: ServerRouteDeps) => deps;

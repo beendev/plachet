@@ -8,6 +8,8 @@ import { z } from "zod";
 export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) {
   const {
     bcrypt,
+    createCompany,
+    getCompanyByUserId,
     createSupabaseNotification,
     createSupabaseUser,
     crypto,
@@ -69,7 +71,25 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
     const env = getServerEnv();
     const sessionSecret = env.sessionSecret || env.supabaseServiceRoleKey;
     const token = createSessionToken({ userId: user.id, role: user.role }, sessionSecret);
-    res.json({ user: sanitizeAuthUser(user), token });
+
+    // Merge company data into user response for frontend compatibility
+    const company = await getCompanyByUserId(user.id).catch(() => null);
+    const safeUser = sanitizeAuthUser(user);
+    if (company) {
+      safeUser.company_name = company.company_name;
+      safeUser.vat_number = company.vat_number;
+      safeUser.bce_number = company.bce_number;
+      safeUser.ipi_number = company.ipi_number;
+      safeUser.is_ipi_certified = company.is_ipi_certified;
+      safeUser.is_vat_liable = company.is_vat_liable;
+      safeUser.address = company.address;
+      safeUser.street = company.street;
+      safeUser.number = company.number;
+      safeUser.box = company.box;
+      safeUser.zip = company.zip;
+      safeUser.city = company.city;
+    }
+    res.json({ user: safeUser, token });
   });
 
   app.post("/api/auth/forgot-password", async (req, res) => {
@@ -248,30 +268,38 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
       const hashedPassword = bcrypt.hashSync(password, 10);
       const verificationToken = crypto.randomBytes(32).toString("hex");
 
-      const userData: Record<string, any> = {
+      // 1. Create user (auth/identity only)
+      const user = await createSupabaseUser({
         email: normalizedEmail,
         password: hashedPassword,
         first_name: first_name || null,
         last_name: last_name || null,
         name: name || null,
-        company_name: company_name || null,
         phone: phone || null,
-        address,
-        street: street || null,
-        number: number || null,
-        box: box || null,
-        zip: zip || null,
-        city: city || null,
-        vat_number: vat_number || null,
-        ipi_number: ipi_number || null,
-        is_vat_liable: is_vat_liable != null ? (is_vat_liable ? 1 : 0) : null,
         role,
         profile_completed: role === "syndic" ? 1 : 0,
         email_verified: 0,
         verification_token: verificationToken,
-      };
+      });
 
-      const user = await createSupabaseUser(userData);
+      // 2. Create company entity (syndic only)
+      if (role === "syndic") {
+        await createCompany({
+          user_id: user.id,
+          name: name || null,
+          company_name: company_name || null,
+          phone: phone || null,
+          address,
+          street: street || null,
+          number: number || null,
+          box: box || null,
+          zip: zip || null,
+          city: city || null,
+          vat_number: vat_number || null,
+          ipi_number: ipi_number || null,
+          is_vat_liable: is_vat_liable != null ? Boolean(is_vat_liable) : true,
+        });
+      }
 
       if (role === "syndic") {
         await createSupabaseNotification({

@@ -188,6 +188,25 @@ CREATE TABLE public.users (
   password text NOT NULL,
   role text DEFAULT 'syndic'::text,
   name text,
+  phone text,
+  first_name text,
+  last_name text,
+  profile_completed boolean DEFAULT false,
+  email_verified boolean DEFAULT false,
+  verification_token text,
+  reset_token text,
+  reset_token_expires timestamp with time zone,
+  parent_id integer,
+  deleted_at timestamp with time zone,
+  has_full_building_access boolean DEFAULT false,
+  CONSTRAINT users_pkey PRIMARY KEY (id),
+  CONSTRAINT users_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.users(id)
+);
+
+CREATE TABLE public.companies (
+  id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  user_id integer NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  name text,
   company_name text,
   phone text,
   address text,
@@ -197,20 +216,12 @@ CREATE TABLE public.users (
   zip text,
   city text,
   vat_number text,
-  profile_completed boolean DEFAULT false,
-  email_verified boolean DEFAULT false,
-  verification_token text,
-  reset_token text,
-  reset_token_expires timestamp with time zone,
-  parent_id integer,
-  first_name text,
-  last_name text,
+  is_vat_liable boolean DEFAULT true,
   bce_number text,
   ipi_number text,
   is_ipi_certified boolean DEFAULT false,
-  is_vat_liable boolean DEFAULT true,
-  deleted_at timestamp with time zone,
-  has_full_building_access boolean DEFAULT false,
-  CONSTRAINT users_pkey PRIMARY KEY (id),
-  CONSTRAINT users_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.users(id)
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_user_id ON public.companies(user_id);

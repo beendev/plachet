@@ -274,15 +274,52 @@ export async function emailExists(email: string) {
   return Boolean(user);
 }
 
+// ── Companies ──
+
+export async function getCompanyByUserId(userId: number | string) {
+  const { data, error } = await getClient().from("companies").select("*").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data ? normalizeBooleanFlags(data) : null;
+}
+
+export async function createCompany(payload: AnyRecord) {
+  const { data, error } = await getClient().from("companies").insert(payload).select("*").single();
+  if (error) throw error;
+  return normalizeBooleanFlags(data);
+}
+
+export async function updateCompany(userId: number | string, payload: AnyRecord) {
+  const { data, error } = await getClient().from("companies").update(payload).eq("user_id", userId).select("*").single();
+  if (error) throw error;
+  return normalizeBooleanFlags(data);
+}
+
+export async function deleteCompanyByUserId(userId: number | string) {
+  const { error } = await getClient().from("companies").delete().eq("user_id", userId);
+  if (error) throw error;
+}
+
+/** Returns syndic users with their company data merged */
 export async function listSyndicUsers() {
-  const { data, error } = await getClient()
+  const client = getClient();
+  const { data: users, error: usersError } = await client
     .from("users")
-    .select("id,email,name,role,company_name,phone,address,street,number,box,zip,city,vat_number,profile_completed,first_name,last_name,bce_number,ipi_number,is_ipi_certified")
+    .select("id,email,name,role,phone,profile_completed,first_name,last_name")
     .eq("role", "syndic")
     .is("parent_id", null);
+  if (usersError) throw usersError;
 
-  if (error) throw error;
-  return normalizeRows(data);
+  const { data: companies, error: companiesError } = await client
+    .from("companies")
+    .select("*");
+  if (companiesError) throw companiesError;
+
+  const companyByUserId = new Map((companies || []).map((c: any) => [Number(c.user_id), normalizeBooleanFlags(c)]));
+
+  return normalizeRows(users).map((u: any) => {
+    const company = companyByUserId.get(Number(u.id)) || {};
+    return { ...u, company_name: company.company_name, vat_number: company.vat_number, bce_number: company.bce_number, ipi_number: company.ipi_number, is_ipi_certified: company.is_ipi_certified, is_vat_liable: company.is_vat_liable, address: company.address, street: company.street, number: company.number, box: company.box, zip: company.zip, city: company.city, _company: company };
+  });
 }
 
 export async function listTeamMembers(parentId: number | string) {
