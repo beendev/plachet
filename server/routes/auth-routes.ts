@@ -92,6 +92,47 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
     res.json({ user: safeUser, token });
   });
 
+  app.post("/api/auth/resend-verification", async (req, res) => {
+    const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "Email invalide." });
+    const { email } = parsed.data;
+    const normalizedEmail = normalizeEmail(email);
+    const user = await getSupabaseUserByEmail(normalizedEmail);
+
+    // Always return success to prevent email enumeration
+    if (!user || user.email_verified) {
+      return res.json({ success: true });
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+    await updateSupabaseUser(user.id, { verification_token: verificationToken });
+
+    const verificationUrl = `${resolveAppBaseUrl(req)}/api/auth/verify?token=${verificationToken}`;
+    try {
+      await resend.emails.send({
+        from: "Plachet <info@plachet.be>",
+        to: normalizedEmail,
+        subject: "Vérifiez votre adresse email - Plachet",
+        html: generateEmailTemplate(
+          "Vérification de votre email",
+          `
+          <p style="margin-top: 0;">Bonjour <strong>${user.name || "Syndic"}</strong>,</p>
+          <p>Cliquez sur le bouton ci-dessous pour vérifier votre adresse email :</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${verificationUrl}" style="display: inline-block; padding: 14px 28px; background-color: #000000; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px;">Vérifier mon email</a>
+          </div>
+          <p style="margin-bottom: 0; font-size: 12px; color: #71717a; word-break: break-all;">Si le bouton ne fonctionne pas, copiez-collez ce lien :<br><br>${verificationUrl}</p>
+          `,
+        ),
+      });
+    } catch (emailError) {
+      console.error("Failed to resend verification email:", emailError);
+    }
+
+    res.json({ success: true });
+  });
+
   app.post("/api/auth/forgot-password", async (req, res) => {
     const parsed = z.object({ email: z.string().email() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "Email invalide." });
