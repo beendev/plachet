@@ -23,6 +23,11 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
   const resolveAppBaseUrl = (req: Request) => {
     const env = getServerEnv();
     if (env.appUrl) return env.appUrl.replace(/\/$/, "");
+    const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+    if (forwardedProto && forwardedHost) {
+      return `${forwardedProto}://${forwardedHost}`.replace(/\/$/, "");
+    }
     const origin = String(req.headers.origin || "").trim();
     if (origin) return origin.replace(/\/$/, "");
     return `${req.protocol}://${req.get("host")}`;
@@ -39,6 +44,61 @@ export function registerSupabaseAuthRoutes(app: Express, deps: ServerRouteDeps) 
     return safeUser;
   };
   const isStrongEnoughPassword = (value: unknown) => String(value || "").length >= 8;
+  const escapeHtml = (value: unknown) =>
+    String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const sendVerificationPage = (
+    res: any,
+    options: {
+      statusCode?: number;
+      title: string;
+      heading: string;
+      message: string;
+      ctaLabel?: string;
+      ctaHref?: string;
+      accentColor?: string;
+    },
+  ) => {
+    const statusCode = options.statusCode ?? 200;
+    const accentColor = options.accentColor || "#10b981";
+    const ctaHref = options.ctaHref || "/";
+    const ctaLabel = options.ctaLabel || "Aller a la connexion";
+    return res.status(statusCode).send(`
+      <html>
+        <head>
+          <title>${escapeHtml(options.title)}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f4f4f5; }
+            .card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); text-align: center; max-width: 440px; width: 90%; }
+            h1 { color: ${accentColor}; margin-top: 0; }
+            p { color: #52525b; line-height: 1.5; margin-bottom: 0; }
+            a { display: inline-block; margin-top: 24px; padding: 12px 24px; background: #18181b; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>${escapeHtml(options.heading)}</h1>
+            <p>${escapeHtml(options.message)}</p>
+            <a href="${escapeHtml(ctaHref)}">${escapeHtml(ctaLabel)}</a>
+          </div>
+        </body>
+      </html>
+    `);
+  };
+  const markUserEmailVerified = async (userId: number | string) => {
+    try {
+      await updateSupabaseUser(userId, { email_verified: true, verification_token: null });
+    } catch (error: any) {
+      const message = String(error?.message || error?.details || error || "").toLowerCase();
+      if (!message.includes("boolean")) throw error;
+      await updateSupabaseUser(userId, { email_verified: 1, verification_token: null });
+    }
+  };
 
   app.post("/api/auth/login", async (req, res) => {
     const parsed = z.object({ email: z.string().email(), password: z.string().min(1) }).safeParse(req.body);
@@ -415,39 +475,47 @@ Besoin d'aide ? Contactez-nous à info@plachet.be.`,
   });
 
   app.get("/api/auth/verify", async (req, res) => {
-    const { token } = req.query;
+    const token = String(req.query?.token || "").trim();
+    const loginUrl = `${resolveAppBaseUrl(req)}/syndic/login`;
     if (!token) {
-      return res.status(400).send("Token manquant.");
+      return sendVerificationPage(res, {
+        statusCode: 400,
+        title: "Verification impossible - Plachet",
+        heading: "Lien invalide",
+        message: "Le lien de verification est incomplet. Demandez un nouvel email de verification depuis la page de connexion.",
+        ctaHref: loginUrl,
+      });
     }
 
-    const user = await getSupabaseUserByVerificationToken(String(token));
-    if (!user) {
-      return res.status(400).send("Lien de vérification invalide ou expiré.");
+    try {
+      const user = await getSupabaseUserByVerificationToken(token);
+      if (!user) {
+        return sendVerificationPage(res, {
+          statusCode: 400,
+          title: "Lien invalide - Plachet",
+          heading: "Lien invalide ou expire",
+          message: "Ce lien de verification est invalide ou a deja ete utilise. Demandez un nouvel email depuis la page de connexion.",
+          ctaHref: loginUrl,
+        });
+      }
+
+      await markUserEmailVerified(user.id);
+      return sendVerificationPage(res, {
+        title: "Email verifie - Plachet",
+        heading: "Email verifie",
+        message: "Votre adresse email a ete verifiee avec succes. Vous pouvez maintenant vous connecter a votre espace.",
+        ctaHref: loginUrl,
+      });
+    } catch (error) {
+      console.error("Verification link error:", error);
+      return sendVerificationPage(res, {
+        statusCode: 500,
+        title: "Erreur de verification - Plachet",
+        heading: "Erreur technique",
+        message: "Une erreur est survenue pendant la verification. Reessayez dans quelques minutes ou contactez le support.",
+        ctaHref: loginUrl,
+        accentColor: "#dc2626",
+      });
     }
-
-    await updateSupabaseUser(user.id, { email_verified: 1, verification_token: null });
-
-    res.send(`
-      <html>
-        <head>
-          <title>Email Vérifié - Plachet</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <style>
-            body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f4f4f5; }
-            .card { background: white; padding: 40px; border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); text-align: center; max-width: 400px; width: 90%; }
-            h1 { color: #10b981; margin-top: 0; }
-            p { color: #52525b; line-height: 1.5; }
-            a { display: inline-block; margin-top: 24px; padding: 12px 24px; background: #18181b; color: white; text-decoration: none; border-radius: 12px; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>Email Vérifié !</h1>
-            <p>Votre adresse email a été vérifiée avec succès. Vous pouvez maintenant vous connecter à votre espace syndic.</p>
-            <a href="/">Aller à la connexion</a>
-          </div>
-        </body>
-      </html>
-    `);
   });
 }

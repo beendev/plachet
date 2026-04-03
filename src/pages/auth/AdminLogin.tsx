@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 type AdminLoginProps = {
@@ -13,38 +13,59 @@ export const AdminLogin = ({ onLogin, onRegisterClick, onForgotPasswordClick, on
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [resendStatus, setResendStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
   const [needsVerification, setNeedsVerification] = useState(false);
 
   const handleSubmit = async () => {
+    if (isSubmitting) return;
+
     setError('');
     setNeedsVerification(false);
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    if (res.ok) {
-      const payload = await res.json();
-      if (payload?.user && payload?.token) {
-        onLogin({ user: payload.user, token: payload.token });
-      } else if (payload?.id && payload?.role) {
-        onLogin({ user: payload, token: '' });
-      } else {
-        setError('Session invalide');
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+
+      if (res.ok) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.user && payload?.token) {
+          onLogin({ user: payload.user, token: payload.token });
+          return;
+        }
+        if (payload?.id && payload?.role) {
+          onLogin({ user: payload, token: '' });
+          return;
+        }
+
+        setError('Reponse serveur invalide.');
+        return;
       }
-    } else {
+
       const data = await res.json().catch(() => ({}));
       const errMsg = data?.error || 'Identifiants invalides';
       setError(errMsg);
-      if (errMsg.toLowerCase().includes('vérifier') || errMsg.toLowerCase().includes('email')) {
+      const low = String(errMsg).toLowerCase();
+      if (low.includes('verif') || low.includes('email')) {
         setNeedsVerification(true);
       }
+    } catch {
+      setError('Erreur reseau. Verifiez la connexion puis reessayez.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleResendVerification = async () => {
-    if (!email) { setError('Entrez votre email pour renvoyer le lien.'); return; }
+    if (!email) {
+      setError('Entrez votre email pour renvoyer le lien.');
+      return;
+    }
+
     setResendStatus('sending');
     try {
       const res = await fetch('/api/auth/resend-verification', {
@@ -61,7 +82,7 @@ export const AdminLogin = ({ onLogin, onRegisterClick, onForgotPasswordClick, on
         setResendStatus('idle');
       }
     } catch {
-      setError("Erreur réseau.");
+      setError('Erreur reseau.');
       setResendStatus('idle');
     }
   };
@@ -80,26 +101,38 @@ export const AdminLogin = ({ onLogin, onRegisterClick, onForgotPasswordClick, on
             <span className="text-white font-bold text-3xl">P</span>
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-center mb-8 tracking-tight">Accès Portail</h2>
+        <h2 className="text-2xl font-bold text-center mb-8 tracking-tight">Acces Portail</h2>
+
         {error && (
           <div className="bg-red-50 text-red-600 p-4 rounded-xl text-xs font-bold mb-6">
             {error}
           </div>
         )}
+
         {resendStatus === 'sent' && (
           <div className="bg-emerald-50 text-emerald-600 p-4 rounded-xl text-xs font-bold mb-6">
-            Email de vérification renvoyé ! Vérifiez votre boîte mail (et vos spams).
+            Email de verification renvoye. Verifiez votre boite mail (et vos spams).
           </div>
         )}
+
         <div className="space-y-6">
           <div className="space-y-2">
             <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-zinc-50 border-none rounded-xl px-4 py-4 focus:ring-2 focus:ring-black outline-none" placeholder="pl@chet.be" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-zinc-50 border-none rounded-xl px-4 py-4 focus:ring-2 focus:ring-black outline-none"
+              placeholder="pl@chet.be"
+            />
           </div>
+
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Mot de passe</label>
-              <button onClick={onForgotPasswordClick} className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 hover:text-emerald-700">Oublié ?</button>
+              <button onClick={onForgotPasswordClick} className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 hover:text-emerald-700">
+                Oublie ?
+              </button>
             </div>
             <div className="relative">
               <input
@@ -118,21 +151,28 @@ export const AdminLogin = ({ onLogin, onRegisterClick, onForgotPasswordClick, on
               </button>
             </div>
           </div>
-          <button onClick={handleSubmit} className="w-full bg-black text-white py-5 rounded-2xl font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all">
-            Se connecter
+
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="w-full bg-black text-white py-5 rounded-2xl font-bold uppercase tracking-widest hover:bg-zinc-800 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Connexion...' : 'Se connecter'}
           </button>
+
           {needsVerification && resendStatus !== 'sent' && (
             <button
               onClick={handleResendVerification}
               disabled={resendStatus === 'sending'}
               className="w-full bg-amber-50 text-amber-700 py-3 rounded-xl text-xs font-bold uppercase tracking-widest hover:bg-amber-100 transition-all disabled:opacity-50"
             >
-              {resendStatus === 'sending' ? 'Envoi en cours...' : 'Renvoyer le mail de vérification'}
+              {resendStatus === 'sending' ? 'Envoi en cours...' : 'Renvoyer le mail de verification'}
             </button>
           )}
+
           <div className="text-center pt-4">
             <button onClick={onRegisterClick} className="text-sm font-bold uppercase tracking-widest text-emerald-600 hover:text-emerald-700 transition-colors">
-              Pas encore de compte ? S&apos;inscrire
+              Pas encore de compte ? S'inscrire
             </button>
           </div>
         </div>
